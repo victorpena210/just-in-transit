@@ -13,6 +13,8 @@ public class SavedCommute {
     public String destinationStop;
     public String originStop, locationMode;
     public String corridor,planMode;
+    public Integer maxBoardingWait,maxTransferWait,trafficAllowance;
+    public String preference;
     public Double originLat, originLon, destinationLat, destinationLon;
     @Column(length=200) public String resolvedOrigin;
     @Column(length=200) public String resolvedDestination;
@@ -22,6 +24,7 @@ public class SavedCommute {
         s.origin=f.origin(); s.destination=f.destination(); s.arriveBy=f.arriveBy();
         s.walkToStop=f.walkToStop(); s.transferWalk=f.transferWalk(); s.walkToWork=f.walkToWork();
         s.boardingBuffer=f.boardingBuffer(); s.transferBuffer=f.transferBuffer(); s.arrivalBuffer=f.arrivalBuffer();
+        s.maxBoardingWait=f.maxBoardingWait();s.maxTransferWait=f.maxTransferWait();s.trafficAllowance=f.trafficAllowance();s.preference=f.preference();
         s.destinationStop=f.destinationStop();s.originStop=f.originStop();s.locationMode=f.locationMode();
         s.originLat=f.originLat();s.originLon=f.originLon();s.destinationLat=f.destinationLat();s.destinationLon=f.destinationLon();
         s.resolvedOrigin=f.resolvedOrigin();s.resolvedDestination=f.resolvedDestination();return s;
@@ -29,6 +32,6 @@ public class SavedCommute {
     public CommuteForm form(LocalDate date) {
         return new CommuteForm(origin,destination,date,arriveBy,walkToStop,transferWalk,walkToWork,
                 boardingBuffer,transferBuffer,arrivalBuffer,destinationStop,originStop,locationMode,
-                originLat,originLon,destinationLat,destinationLon,resolvedOrigin,resolvedDestination,corridor,planMode,"home","");
+                originLat,originLon,destinationLat,destinationLon,resolvedOrigin,resolvedDestination,corridor,planMode,"home","",maxBoardingWait,maxTransferWait,trafficAllowance,preference);
     }
 }

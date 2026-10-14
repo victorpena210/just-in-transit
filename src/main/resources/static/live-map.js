@@ -80,6 +80,12 @@
   }
   function tick() {
     const now = serverNow();
+    const guidance = $('journey-guidance');
+    if (guidance && guidance.dataset.finished !== 'true' && (failed || !navigator.onLine || now > Date.parse(guidance.dataset.checked) + 75000 || data?.countdowns.some(c => now > Date.parse(c.validUntil)))) {
+      guidance.querySelector('h3').textContent = 'Status unconfirmed · refresh needed';
+      guidance.classList.remove('comfortable');guidance.classList.add('uncertain');
+      guidance.querySelector('[name="action"]')?.setAttribute('disabled','');
+    }
     for (const [i, c] of (data?.countdowns || []).entries()) {
       const card = $('map-countdowns').children[i]; if (!card) continue;
       const stale = failed || now > Date.parse(c.validUntil), seconds = (Date.parse(c.target) - now) / 1000;
@@ -100,7 +106,7 @@
     const current = $('journey-refresh');
     if (current && !current.checked) return;
     const response = await fetch('/', { credentials: 'same-origin', cache: 'no-store', signal: AbortSignal.timeout(30000) });
-    if (!response.ok || response.redirected) return;
+    if (!response.ok || response.redirected) throw new Error("Journey update unavailable");
     const html = new DOMParser().parseFromString(await response.text(), 'text/html');
     const next = html.getElementById('active-journey');
     if (next && $('active-journey')) $('active-journey').replaceWith(next);

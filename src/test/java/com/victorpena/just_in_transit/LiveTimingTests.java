@@ -62,7 +62,7 @@ class LiveTimingTests {
         assertEquals("c",result.options().get(0).second().tripId());assertEquals("40 min late",result.options().get(0).deadlineLabel());
     }
     @Test void scheduledConnectionShowsExplicitUncertainty() {
-        var option=selected();assertFalse(option.connectionConfirmed());assertEquals("Buffers met · estimated",option.displayRating());
+        var option=selected();assertFalse(option.connectionConfirmed());assertEquals("Preferences met · estimated",option.displayRating());
     }
     @Test void timingEventWithoutTimeOrDelayFallsBackAndResetsPropagation() {
         var empty=new StopPrediction(2,"","SCHEDULED",new Prediction(null,null,120),new Prediction(null,null,null));

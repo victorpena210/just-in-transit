@@ -170,17 +170,24 @@ public final class ActiveJourney {
             candidates.addAll(CommutePlanner.legs(schedule,live,state.form().route().secondRoute(),state.form().route().transferOn(),state.form().destinationStop(),today.plusDays(1),now));
         }
         Leg next=candidates.stream().filter(l->!missed.contains(key(l)) && !l.board().at().isBefore(now)
-            && !l.board().at().isAfter(now.plusSeconds(6*3600))).min(Comparator.comparing(l->l.board().at())).orElse(null);
+            && !l.board().at().isAfter(now.plusSeconds(6*3600))).min(Comparator.comparing((Leg l)->l.alight().at()).thenComparing(l->l.board().at())).orElse(null);
         var old=view(state,schedule,live,now).option();
         Option selected=next==null?old:option(state.form(),old.first(),next,old.leaveHome(),now);
         return changed(state,selected,state.phase(),now,Set.copyOf(missed),next==null,false,"missedTransfer");
+    }
+    public static State replaceSecond(State state,Schedule schedule,LiveSnapshot live,Instant now) {
+        var v=view(state,schedule,live,now);
+        if(!v.firstBoardDone() || v.secondBoardDone())throw new IllegalArgumentException("A replacement transfer can be chosen while on the first bus or at the transfer.");
+        var next=JourneyGuidance.alternative(v,schedule,live,now);
+        if(next==null)throw new IllegalArgumentException("No usable alternative remains. Your current trip is kept; check again.");
+        return new State(UUID.randomUUID().toString(),state.form(),next,state.phase(),state.started(),state.changed(),state.missed(),false,false,state.facts(),state.snapshot());
     }
     private static String key(Leg leg) { return leg.tripId()+"@"+leg.serviceDate(); }
     /** Refresh the same offered buses without replanning or starting a journey. */
     public static Option preview(CommuteForm f,Option old,Schedule schedule,LiveSnapshot live,Instant now) {
         Leg first=refreshLeg(old.first(),schedule,live,f.originStop(),f.route().transferOff(),false,false,now);
         Leg second=refreshLeg(old.second(),schedule,live,f.route().transferOn(),f.destinationStop(),false,false,now);
-        var current=option(f,first,second,first.board().at().minusSeconds((f.walkToStop()+f.boardingBuffer())*60L),
+        var current=option(f,first,second,f.atStop() || f.onboard()?now:first.board().at().minusSeconds((f.walkToStop()+f.boardingBuffer())*60L),
             first.alight().at().plusSeconds(f.transferWalk()*60L));
         Backup backup=null;
         if(old.backup()!=null) {
@@ -191,8 +198,12 @@ public final class ActiveJourney {
                     Duration.between(work,f.date().atTime(f.arriveBy()).atZone(ZONE).toInstant()).getSeconds(),!f.departing());
             }
         }
+        long firstWait=f.atStop()?Duration.between(now,first.board().at()).getSeconds():f.boardingBuffer()*60L;
+        boolean firstFits=f.onboard() || firstWait>=f.boardingBuffer()*60L && firstWait<=f.maxBoardingWait()*60L;
+        String rating=!firstFits?(firstWait<f.boardingBuffer()*60L?"Tight first boarding":"Longer wait than preferred"):current.rating();
+        if(!f.departing() && current.arrivalMargin()<0)rating="Late arrival";
         return new Option(first,second,current.leaveHome(),current.atWork(),current.transferMargin(),current.arrivalMargin(),
-            current.transferWait(),current.meetsBuffers(),current.rating(),backup==null?null:backup.minutesLater(),backup,!f.departing());
+            current.transferWait(),current.meetsBuffers() && firstFits,rating,backup==null?null:backup.minutesLater(),backup,!f.departing());
     }
     private static Instant later(Instant a,Instant b) { return a.isAfter(b)?a:b; }
     private static Leg refreshLeg(Leg old,Schedule schedule,LiveSnapshot live,String from,String to,
@@ -212,11 +223,11 @@ public final class ActiveJourney {
         return new Leg(old.route(),old.tripId(),board,alight,old.serviceDate());
     }
     private static Event unconfirmed(Event old) { return new Event(old.at(),"Last estimate · unconfirmed",false,false); }
-    private static Option option(CommuteForm f,Leg first,Leg second,Instant leave,Instant ready) {
+    static Option option(CommuteForm f,Leg first,Leg second,Instant leave,Instant ready) {
         Instant work=second.alight().at().plusSeconds(f.walkToWork()*60L);
         long transfer=Duration.between(ready,second.board().at()).getSeconds();
         long arrival=Duration.between(work,f.date().atTime(f.arriveBy()).atZone(ZONE).toInstant()).getSeconds();
-        boolean meets=transfer>=f.transferBuffer()*60L && (f.departing() || arrival>=f.arrivalBuffer()*60L);
+        boolean meets=transfer>=(f.transferBuffer()+f.trafficAllowance())*60L && transfer<=f.maxTransferWait()*60L && (f.departing() || arrival>=(f.arrivalBuffer()+f.trafficAllowance())*60L);
         return new Option(first,second,leave,work,Math.floorDiv(transfer,60),Math.floorDiv(arrival,60),Math.floorDiv(transfer,60),meets,
             meets?"Buffers met":!f.departing() && arrival<0?"Late arrival":transfer<0?"Connection at risk":"Tight timing",null,null,!f.departing());
     }

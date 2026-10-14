@@ -36,6 +36,10 @@ public class HomeController {
             model.addAttribute("commute",active.form());
             return render(active.form(),model,false);
         }
+        if(model.asMap().get("savedPlan") instanceof CommuteForm justSaved) {
+            model.addAttribute("commute",justSaved);
+            return render(justSaved,model,true);
+        }
         model.addAttribute("resumeJourney",recovery.load(request,clock.instant()));
         LocalDate day=LocalDate.now(clock.withZone(ZONE));
         var last=journeys.lastForm();
@@ -56,12 +60,21 @@ public class HomeController {
         validateStops(form,errors);
         return render(form,model,!errors.hasErrors());
     }
-    @PostMapping("/save") public String save(@Valid @ModelAttribute("commute") CommuteForm form,BindingResult errors,Model model) {
+    @PostMapping("/save") public String save(@Valid @ModelAttribute("commute") CommuteForm form,BindingResult errors,Model model,RedirectAttributes flash) {
         if(journeys.current(clock.instant())!=null)return "redirect:/";
         validateStops(form,errors);
         if(!errors.hasErrors()) {
-            saved.save(SavedCommute.from(form));
-            model.addAttribute("notice","Commute saved on this computer.");
+            try {
+                saved.saveAndFlush(SavedCommute.from(form));
+            } catch(org.springframework.dao.DataAccessException ex) {
+                org.slf4j.LoggerFactory.getLogger(HomeController.class).error("Could not save commute settings",ex);
+                errors.reject("save.failed","Your commute could not be saved. Your entries are still here; please try again.");
+                return render(form,model,false);
+            }
+            // Commit first, then render on GET: refresh never repeats a save.
+            flash.addFlashAttribute("notice","Commute saved. Your walking times and wait preferences are ready to reuse.");
+            flash.addFlashAttribute("savedPlan",form);
+            return "redirect:/";
         }
         return render(form,model,!errors.hasErrors());
     }
@@ -135,6 +148,7 @@ public class HomeController {
         var active=journeys.current(now);
         var journey=active==null?null:ActiveJourney.view(active,schedule,live,now);
         model.addAttribute("journey",journey);
+        model.addAttribute("guidance",journey==null?null:JourneyGuidance.from(journey,schedule,live,now));
         model.addAttribute("route",form.route());
         model.addAttribute("boardingChoices",planner.boardingChoices(form,schedule,live,now));
         model.addAttribute("mapTileUrl",tileUrl);
@@ -167,7 +181,12 @@ public class HomeController {
         model.addAttribute("editOpen",invalid || result==null && active==null && !saved.existsById(form.route().savedId()));
         model.addAttribute("hasJourneyContent",active!=null || result!=null && !result.options().isEmpty());
         var advisory=alerts.get();
-        model.addAttribute("alerts",advisory.relevant(AlertStore.contexts(form,schedule,journey==null?result:new Result(java.util.List.of(journey.option()),"Active commute"),now)));
+        var relevant=advisory.relevant(AlertStore.contexts(form,schedule,journey==null?result:new Result(java.util.List.of(journey.option()),"Active commute"),now));
+        model.addAttribute("alerts",relevant);
+        if(journey!=null && !journey.finished() && !relevant.isEmpty()) {
+            var guidance=(JourneyGuidance)model.asMap().get("guidance");
+            model.addAttribute("guidance",new JourneyGuidance(guidance.status()+" · check service advisory","tight",guidance.nextStep(),guidance.change(),guidance.backup(),guidance.canReplace()));
+        }
         model.addAttribute("alertStatus",alerts.status(now));
         model.addAttribute("alertsConfirmed",alerts.confirmed(now));
         model.addAttribute("alertUpdated",advisory.updatedDisplay());
@@ -189,7 +208,7 @@ public class HomeController {
     private static CommuteForm defaultForm(String key,LocalDate day) {
         if("home".equals(key))return new CommuteForm("Work","Home",day,LocalTime.of(17,0),null,3,null,3,5,0,
             "81793","75229","manual",null,null,null,null,null,null,"home","depart","home","");
-        return new CommuteForm("","Six Flags Fiesta Texas — employee entrance",day,LocalTime.of(9,0),8,3,10,3,5,5,"83463");
+        return new CommuteForm("","Six Flags Fiesta Texas — employee entrance",day,LocalTime.of(9,0),8,3,10,3,5,5,"83463").withPreferences(15,30,5,"balanced");
     }
     private static String stopName(Schedule schedule,String id,String fallback) {
         return schedule!=null && id!=null && schedule.stops().containsKey(id)?schedule.stops().get(id).name():fallback;

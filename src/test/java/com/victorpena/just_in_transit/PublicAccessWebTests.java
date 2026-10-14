@@ -95,7 +95,7 @@ class PublicAccessWebTests {
                 .param("walkToStop", "8").param("transferWalk", "3").param("walkToWork", "10")
                 .param("boardingBuffer", "3").param("transferBuffer", "5").param("arrivalBuffer", "5")
                 .param("destinationStop", "83463"))
-                .andExpect(status().isOk()).andExpect(unauthenticated());
+                .andExpect(redirectedUrl("/")).andExpect(unauthenticated());
         assertEquals(1, saved.count());
         // No session is reused: saved settings are intentionally shared, not per-visitor.
         mvc.perform(https(get("/"))).andExpect(status().isOk())

@@ -13,29 +13,34 @@ public class CommutePlanner {
         Instant deadline=f.date().atTime(f.arriveBy()).atZone(ZONE).toInstant();
         Instant horizon=(f.onboard() || f.atStop()?now:deadline.isAfter(now)?deadline:now).plusSeconds(6*3600);
         List<Option> candidates=connections(f,schedule,live,now,horizon,false,Set.of());
-        if(f.departing() || f.onboard() || f.atStop()) {
-            var ranked=candidates.stream().sorted(earliestArrival()).limit(3).toList();
-            return new Result(ranked,ranked.isEmpty()?"No usable remaining connection was found for this stage. Check your stop, selected bus and date.":
-                f.departing()?"Earliest arrivals after your selected departure time, including the final walk. No arrival deadline is set.":
-                "Earliest remaining arrivals from your confirmed stage. Your original arrival deadline stays in place.");
-        }
-        List<Option> onTime=candidates.stream().filter(o->o.arrivalMargin()>=0).toList();
-        if(onTime.isEmpty()) {
-            List<Option> late=candidates.stream().sorted(earliestArrival()).limit(3).toList();
+        List<Option> eligible=f.departing()?candidates:candidates.stream().filter(o->o.arrivalMargin()>=0).toList();
+        if(eligible.isEmpty()) {
+            var late=candidates.stream().sorted(earliestArrival()).limit(3).toList();
             return new Result(late,late.isEmpty()?"No remaining usable "+f.route().routes()+" connection was found on your saved route within the search window. Check VIA for another route.":
-                "No on-time connection remains on your saved route in the checked schedule. This is the earliest remaining arrival, including your final walk. Estimates can change.");
+                "No on-time connection remains on your saved route. Earliest remaining arrivals are shown, including your final walk. Your deadline is unchanged.");
         }
-        // One choice per first bus, with an earlier/later comparison when available.
-        List<Option> ranked=onTime.stream().sorted(Comparator.comparing(Option::meetsBuffers).reversed()
-            .thenComparing(Option::leaveHome,Comparator.reverseOrder())).toList();
-        Option best=ranked.get(0);List<Option> result=new ArrayList<>();result.add(best);
-        ranked.stream().filter(o->o.leaveHome().isBefore(best.leaveHome())
-            && (o.transferMargin()>best.transferMargin() || o.arrivalMargin()>best.arrivalMargin()))
-            .findFirst().ifPresent(result::add);
-        ranked.stream().filter(o->o.leaveHome().isAfter(best.leaveHome())).findFirst().ifPresent(result::add);
+        var ranked=eligible.stream().sorted(ranking(f)).toList();
+        Option best=ranked.get(0);
+        // Show genuinely different first buses when possible, then other connections on the same bus.
+        List<Option> result=new ArrayList<>();result.add(best);
+        for(var o:ranked)if(result.size()<3 && result.stream().noneMatch(r->legKey(r.first()).equals(legKey(o.first()))))result.add(o);
         for(var o:ranked)if(result.size()<3 && !result.contains(o))result.add(o);
-        return new Result(List.copyOf(result),best.meetsBuffers()?"Latest departure that meets your walking times and requested buffers.":
-            "An on-time arrival is possible, but no remaining option meets every requested buffer. Review the timing below.");
+        String choice=f.departing()?"Departures after your selected time; no arrival deadline is set.":"On-time arrivals take priority.";
+        String preference=switch(f.preference()) { case "latest" -> "Then prefer leaving later.";case "safer" -> "Then prefer more room for delays.";default -> "Then prefer shorter complete commutes with less excess waiting."; };
+        return new Result(List.copyOf(result),choice+" "+preference+" "+(best.meetsBuffers()?
+            "Your wait windows, walking times and delay allowance are met.":"No option meets every requested window and allowance; review the trade-offs below."));
+    }
+    private static Comparator<Option> ranking(CommuteForm f) {
+        Comparator<Option> base=Comparator.comparing(Option::meetsBuffers).reversed()
+            .thenComparingLong(o->CommuteTiming.waitExcess(f,o));
+        if(f.departing())return base.thenComparing(earliestArrival());
+        return switch(f.preference()) {
+            case "latest" -> base.thenComparing(Option::leaveHome,Comparator.reverseOrder()).thenComparing(earliestArrival());
+            case "safer" -> base.thenComparing(Comparator.comparingLong((Option o)->Math.min(o.transferMargin()-f.transferBuffer()-f.trafficAllowance(),o.arrivalMargin()-f.arrivalBuffer()-f.trafficAllowance())).reversed())
+                .thenComparing(earliestArrival());
+            default -> base.thenComparingLong(o->Duration.between(o.leaveHome(),o.atWork()).getSeconds())
+                .thenComparing(Option::leaveHome,Comparator.reverseOrder()).thenComparing(earliestArrival());
+        };
     }
     /** Replan from the boarding stop: keep the original deadline and final walk, omit the home walk. */
     static Option recover24(CommuteForm f,Schedule schedule,LiveSnapshot live,Instant now,Set<String> missed) {
@@ -79,28 +84,30 @@ public class CommutePlanner {
             if(onboard) { if(!legKey(a).equals(f.firstTrip()) || !joinable(a,now))continue; }
             else if(a.board().at().isBefore(earliest) || !stop && leave.isBefore(earliest))continue;
             if(!f.departing() && !onboard && !stop && a.board().at().isBefore(deadline.minusSeconds(8*3600)))continue;
-            List<Option> connections=new ArrayList<>();
+
             for(var b:second) {
                 long marginSeconds=Duration.between(a.alight().at().plusSeconds(f.transferWalk()*60L),b.board().at()).getSeconds();
-                if(marginSeconds<0 || marginSeconds>90*60)continue;
+                if(marginSeconds<0 || marginSeconds>120*60)continue;
                 Instant atWork=b.alight().at().plusSeconds(f.walkToWork()*60L);
                 long arrivalSeconds=Duration.between(atWork,deadline).getSeconds();
                 if(atWork.isAfter(horizon) || !f.departing() && !atStop && arrivalSeconds>6*3600)continue;
-                boolean transferOk=marginSeconds>=f.transferBuffer()*60L,arrivalOk=f.departing() || arrivalSeconds>=f.arrivalBuffer()*60L;
+                long firstWait=onboard?0:stop?Duration.between(now,a.board().at()).getSeconds():f.boardingBuffer()*60L;
+                boolean transferOk=marginSeconds>=(f.transferBuffer()+f.trafficAllowance())*60L;
+                boolean arrivalOk=f.departing() || arrivalSeconds>=(f.arrivalBuffer()+f.trafficAllowance())*60L;
+                boolean meets=CommuteTiming.meets(f,firstWait,marginSeconds,arrivalSeconds);
                 String rating=f.departing()?(transferOk?"Buffers met":"Tight transfer"):arrivalSeconds<0?"Late arrival":transferOk&&arrivalOk?"Buffers met":!transferOk&&!arrivalOk?"Tight transfer + arrival":!transferOk?"Tight transfer":"Tight arrival";
                 Leg next=second.stream().filter(n->n.board().at().isAfter(b.board().at()) && !legKey(n).equals(legKey(b)))
                     .min(Comparator.comparing(n->n.board().at())).orElse(null);
                 Backup backup=next==null?null:new Backup(next,next.alight().at().plusSeconds(f.walkToWork()*60L),
                     Duration.between(b.board().at(),next.board().at()).toMinutes(),
                     Duration.between(next.alight().at().plusSeconds(f.walkToWork()*60L),deadline).getSeconds(),!f.departing());
-                connections.add(new Option(a,b,leave,atWork,marginSeconds/60,f.departing()?0:Math.floorDiv(arrivalSeconds,60),marginSeconds/60,
-                    transferOk&&arrivalOk,rating,backup==null?null:backup.minutesLater(),backup,!f.departing()));
+                if(!onboard && firstWait<f.boardingBuffer()*60L)rating="Tight first boarding";
+                else if(firstWait>f.maxBoardingWait()*60L || marginSeconds>f.maxTransferWait()*60L)rating="Longer wait than preferred";
+                if(!f.departing() && arrivalSeconds<0)rating="Late arrival";
+                options.add(new Option(a,b,leave,atWork,marginSeconds/60,f.departing()?0:Math.floorDiv(arrivalSeconds,60),marginSeconds/60,
+                    meets,rating,backup==null?null:backup.minutesLater(),backup,!f.departing()));
             }
-            // A late fallback must actually be the earliest arrival, not simply the first departure.
-            var onTime=connections.stream().filter(o->o.arrivalMargin()>=0).toList();
-            (stop || f.departing() || onboard || onTime.isEmpty()?connections.stream().sorted(earliestArrival()):onTime.stream()
-                .sorted(Comparator.comparing(Option::meetsBuffers).reversed().thenComparing(Option::atWork)))
-                .findFirst().ifPresent(options::add);
+
         }
         return options;
     }

@@ -16,7 +16,7 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 @AutoConfigureMockMvc
 class WebTests {
     @Autowired MockMvc mvc;
-    @Autowired CommuteRepository saved;
+    @org.springframework.test.context.bean.override.mockito.MockitoSpyBean CommuteRepository saved;
     @BeforeEach void reset() { saved.deleteAll(); }
     MockHttpServletRequestBuilder commute(String path) {
         return post(path).with(csrf()).param("origin","Test home").param("destination","Test clock-in")
@@ -34,7 +34,7 @@ class WebTests {
         assertEquals(0,saved.count());
     }
     @Test void savesLoadsAndDeletesLocalCommute() throws Exception {
-        mvc.perform(commute("/save")).andExpect(status().isOk()).andExpect(content().string(containsString("Commute saved on this computer")));
+        mvc.perform(commute("/save")).andExpect(redirectedUrl("/")).andExpect(flash().attribute("notice",containsString("Commute saved")));
         assertEquals("Test home",saved.findById(1L).orElseThrow().origin);
         mvc.perform(get("/")).andExpect(content().string(containsString("Test home")));
         mvc.perform(post("/forget").with(csrf())).andExpect(status().is3xxRedirection());
@@ -47,4 +47,29 @@ class WebTests {
     @Test void crossSitePostWithoutTokenIsRejected() throws Exception {
         mvc.perform(post("/forget")).andExpect(status().isForbidden());
     }
+    @Test void saveRedirectPreservesSubmittedDateAndPreferencesWithoutResubmitting() throws Exception {
+        var result=mvc.perform(commute("/save").param("maxBoardingWait","12").param("maxTransferWait","25")
+            .param("trafficAllowance","6").param("preference","safer"))
+            .andExpect(redirectedUrl("/")).andReturn();
+        var response=mvc.perform(get("/").flashAttrs(result.getFlashMap())).andExpect(status().isOk()).andReturn();
+        var f=(CommuteForm)response.getModelAndView().getModel().get("commute");
+        assertEquals(java.time.LocalDate.of(2030,1,2),f.date());assertEquals(6,f.trafficAllowance());assertEquals("safer",f.preference());
+        mvc.perform(get("/")).andExpect(status().isOk());assertEquals(1,saved.count());
+        org.mockito.Mockito.verify(saved,org.mockito.Mockito.times(1)).saveAndFlush(org.mockito.ArgumentMatchers.any());
+    }
+    @Test void contradictoryWaitWindowsStayInFormAndDoNotSave() throws Exception {
+        mvc.perform(commute("/save").param("maxBoardingWait","2").param("maxTransferWait","3"))
+            .andExpect(status().isOk()).andExpect(model().attributeHasErrors("commute"))
+            .andExpect(content().string(containsString("Maximum waits must be at least")));
+        assertEquals(0,saved.count());
+    }
+    @Test void failedSaveRetainsEntriesAndDisplaysActionableError() throws Exception {
+        org.mockito.Mockito.doThrow(new org.springframework.dao.DataIntegrityViolationException("simulated save failure"))
+            .when(saved).saveAndFlush(org.mockito.ArgumentMatchers.any());
+        mvc.perform(commute("/save")).andExpect(status().isOk()).andExpect(model().attributeHasErrors("commute"))
+            .andExpect(content().string(containsString("Your commute could not be saved")))
+            .andExpect(content().string(containsString("Test home")));
+        assertEquals(0,saved.count());
+    }
+
 }

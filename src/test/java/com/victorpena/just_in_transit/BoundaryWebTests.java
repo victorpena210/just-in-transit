@@ -73,19 +73,19 @@ class BoundaryWebTests {
         Assertions.assertEquals(0,repository.count());
     }
     @Test void confirmedStartCanBeSavedWithManualDestinationAndUsesCoordinatesForWalkingLink() throws Exception {
-        mvc.perform(form("/save").param("locationMode","origin")
+        var savedResult=mvc.perform(form("/save").param("locationMode","origin")
             .param("originLat","29.425194").param("originLon","-98.454422").param("resolvedOrigin","Example starting point"))
-            .andExpect(status().isOk()).andExpect(model().hasNoErrors())
-            .andExpect(content().string(containsString("origin=29.425194%2C-98.454422")));
+            .andExpect(redirectedUrl("/")).andReturn();
+        mvc.perform(get("/").flashAttrs(savedResult.getFlashMap())).andExpect(content().string(containsString("origin=29.425194%2C-98.454422")));
         var restored=repository.findById(1L).orElseThrow().form(DAY);
         Assertions.assertTrue(restored.usesAddress("origin"));Assertions.assertFalse(restored.usesAddress("destination"));
         Assertions.assertTrue(restored.isLocationResolved());Assertions.assertNull(restored.destinationLat());
     }
     @Test void confirmedDestinationCanBeSavedWithManualStart() throws Exception {
-        mvc.perform(form("/save").param("locationMode","destination")
+        var savedResult=mvc.perform(form("/save").param("locationMode","destination")
             .param("destinationLat","29.593").param("destinationLon","-98.608").param("resolvedDestination","Example clock-in location"))
-            .andExpect(status().isOk()).andExpect(model().hasNoErrors())
-            .andExpect(content().string(containsString("destination=29.593%2C-98.608")));
+            .andExpect(redirectedUrl("/")).andReturn();
+        mvc.perform(get("/").flashAttrs(savedResult.getFlashMap())).andExpect(content().string(containsString("destination=29.593%2C-98.608")));
         var restored=repository.findById(1L).orElseThrow().form(DAY);
         Assertions.assertFalse(restored.usesAddress("origin"));Assertions.assertTrue(restored.usesAddress("destination"));
         Assertions.assertTrue(restored.isLocationResolved());

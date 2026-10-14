@@ -16,7 +16,7 @@
   let snapshot = null, received = 0, failed = false, dirty = false, pending = false;
   const token = card.dataset.token;
   const starts = () => document.querySelectorAll('.start-form button');
-  const setText = (selector, value) => { const element = card.querySelector(selector); if (element) element.textContent = value; };
+  const setText = (selector, value) => { for (const element of card.querySelectorAll(selector)) element.textContent = value; };
   function tick() {
     const now = snapshot ? Date.parse(snapshot.now) + performance.now() - received : Date.now();
     const clock = snapshot?.countdowns.find(item => item.id === (card.dataset.startMode === 'stop' ? 'bus24' : card.dataset.startMode === 'onboard' ? 'transfer' : 'leave'));
@@ -50,6 +50,13 @@
       setText('[data-decision-leave]', d.leave);setText('[data-decision-work]', d.work);
       setText('[data-decision-deadline]', d.deadline);setText('[data-decision-transfer]', `${d.transfer} min after the transfer walk`);
       setText('[data-decision-backup]', d.backup);setText('[data-decision-confidence]', d.confidence);setText('.badge', d.rating);
+      setText('[data-timing-board-first]',d.firstBoard);setText('[data-timing-off-first]',d.firstAlight);
+      setText('[data-timing-board-second]',d.secondBoard);setText('[data-timing-off-second]',d.secondAlight);
+      if (d.timing) {
+        setText('[data-timing-stop]', d.timing.atFirstStop);setText('[data-timing-first]', `${d.timing.firstWait} min`);
+        setText('[data-timing-transfer]', `${d.timing.transferWait} min`);setText('[data-timing-total]', `${d.timing.totalMinutes} min`);
+        setText('[data-timing-traffic]', d.timing.trafficNote);
+      }
       if (d.transfer < 0) { $('leave-basis').textContent = 'Connection no longer fits. Update the plan.'; failed = true; }
     } catch (_) { failed = true; }
     finally { pending = false; tick(); }

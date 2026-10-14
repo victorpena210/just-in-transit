@@ -47,6 +47,7 @@ public class JourneySession {
             case "advance" -> active=ActiveJourney.advance(state,schedule,live,now);
             case "at24" -> active=ActiveJourney.at24(state,now);
             case "missed24" -> active=ActiveJourney.missed24(state,schedule,live,now);
+            case "replace93" -> active=ActiveJourney.replaceSecond(state,schedule,live,now);
             case "missed93" -> active=ActiveJourney.missed93(state,schedule,live,now);
             case "undo" -> active=ActiveJourney.undo(state,now);
             case "end" -> { active=null;plannedForm=state.form().withJourney("home",""); }

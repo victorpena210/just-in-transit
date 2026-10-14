@@ -28,9 +28,17 @@ public record CommuteForm(
     @Pattern(regexp="work|home") String corridor,
     @Pattern(regexp="arrive|depart") String planMode,
     @Pattern(regexp="home|stop|onboard") String startMode,
-    @Size(max=200) String firstTrip
+    @Size(max=200) String firstTrip,
+    @Min(1) @Max(120) Integer maxBoardingWait,
+    @Min(1) @Max(120) Integer maxTransferWait,
+    @Min(0) @Max(60) Integer trafficAllowance,
+    @Pattern(regexp="balanced|latest|safer") String preference
 ) {
     public CommuteForm {
+        if(maxBoardingWait==null)maxBoardingWait=Math.max(15,boardingBuffer==null?0:boardingBuffer);
+        if(maxTransferWait==null)maxTransferWait=Math.max(30,transferBuffer==null?0:transferBuffer);
+        if(trafficAllowance==null)trafficAllowance=0;
+        if(preference==null)preference="balanced";
         if(corridor==null)corridor="work";
         if(planMode==null)planMode="home".equals(corridor)?"depart":"arrive";
         if(startMode==null)startMode="home";
@@ -44,11 +52,30 @@ public record CommuteForm(
     public boolean onboard() { return "onboard".equals(startMode); }
     public CommuteForm withJourney(String mode,String trip) {
         return new CommuteForm(origin,destination,date,arriveBy,walkToStop,transferWalk,walkToWork,boardingBuffer,transferBuffer,arrivalBuffer,
-            destinationStop,originStop,locationMode,originLat,originLon,destinationLat,destinationLon,resolvedOrigin,resolvedDestination,corridor,planMode,mode,trip);
+            destinationStop,originStop,locationMode,originLat,originLon,destinationLat,destinationLon,resolvedOrigin,resolvedDestination,corridor,planMode,mode,trip,maxBoardingWait,maxTransferWait,trafficAllowance,preference);
     }
     public CommuteForm withTime(LocalDate day,LocalTime clock,String mode,String start,String trip) {
         return new CommuteForm(origin,destination,day,clock,walkToStop,transferWalk,walkToWork,boardingBuffer,transferBuffer,arrivalBuffer,
-            destinationStop,originStop,locationMode,originLat,originLon,destinationLat,destinationLon,resolvedOrigin,resolvedDestination,corridor,mode,start,trip);
+            destinationStop,originStop,locationMode,originLat,originLon,destinationLat,destinationLon,resolvedOrigin,resolvedDestination,corridor,mode,start,trip,maxBoardingWait,maxTransferWait,trafficAllowance,preference);
+    }
+    @AssertTrue(message="Maximum waits must be at least the minimum first-stop and transfer buffers.")
+    public boolean isWaitWindowValid() {
+        return (boardingBuffer==null || maxBoardingWait>=boardingBuffer)
+            && (transferBuffer==null || maxTransferWait>=transferBuffer);
+    }
+    public CommuteForm withPreferences(int firstMax,int transferMax,int traffic,String ranking) {
+        return new CommuteForm(origin,destination,date,arriveBy,walkToStop,transferWalk,walkToWork,boardingBuffer,transferBuffer,arrivalBuffer,
+            destinationStop,originStop,locationMode,originLat,originLon,destinationLat,destinationLon,resolvedOrigin,resolvedDestination,
+            corridor,planMode,startMode,firstTrip,firstMax,transferMax,traffic,ranking);
+    }
+    // Existing saved checkpoints and callers keep the original zero extra-delay assumption.
+    public CommuteForm(String origin,String destination,LocalDate date,LocalTime arriveBy,Integer walkToStop,Integer transferWalk,Integer walkToWork,
+        Integer boardingBuffer,Integer transferBuffer,Integer arrivalBuffer,String destinationStop,String originStop,String locationMode,
+        Double originLat,Double originLon,Double destinationLat,Double destinationLon,String resolvedOrigin,String resolvedDestination,
+        String corridor,String planMode,String startMode,String firstTrip) {
+        this(origin,destination,date,arriveBy,walkToStop,transferWalk,walkToWork,boardingBuffer,transferBuffer,arrivalBuffer,destinationStop,
+            originStop,locationMode,originLat,originLon,destinationLat,destinationLon,resolvedOrigin,resolvedDestination,corridor,planMode,startMode,firstTrip,
+            null,null,0,"balanced");
     }
     public CommuteForm(String origin,String destination,LocalDate date,LocalTime arriveBy,Integer walkToStop,Integer transferWalk,Integer walkToWork,
         Integer boardingBuffer,Integer transferBuffer,Integer arrivalBuffer,String destinationStop,String originStop,String locationMode,

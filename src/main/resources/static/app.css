@@ -89,3 +89,18 @@ body:not(.commute-ready) .journey-column,.journey-column{grid-area:journey;min-w
 .commute-tabs{display:flex;flex-wrap:wrap;gap:.6rem;margin:0 0 1.2rem}.commute-tabs a{padding:.7rem 1rem;border:1px solid var(--line,#d5dfd7);border-radius:12px;text-decoration:none}.commute-tabs a[aria-current="page"]{background:#173f35;color:#fff}.stage-choice{border:1px solid #d7e0d9;border-radius:12px;padding:1rem;margin:1rem 0}.stage-choice legend{font-weight:700;padding:0 .4rem}.stage-choice select{width:100%}.stage-choice [hidden]{display:none}.offline-settings{margin-top:1.2rem}.offline-page,.history-page{padding-top:2rem;padding-bottom:3rem;max-width:900px}.offline-stop{padding:.5rem 0;border-bottom:1px solid #d7e0d9}.report-grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem}.report-grid p{margin:.3rem 0}.history-page .panel{margin:1rem 0}.header-actions{flex-wrap:wrap}.header-actions a{font-size:.85rem}.start-form .refresh-toggle{font-size:.85rem}.end-journey{margin-top:.8rem}@media(max-width:480px){.report-grid{grid-template-columns:1fr}.commute-tabs a{flex:1;font-size:.83rem}.header-actions .location{display:none}}
 
 .offline-page > .secondary{display:block;text-align:center;margin:1rem 0}.offline-page > .text-button{display:block;margin:.8rem 0}
+
+/* Complete-commute timing and active guidance */
+.commute-breakdown { margin:1rem 0; padding:1rem; background:#f5f7f3; border:1px solid #d8e1d8; border-radius:12px; }
+.commute-breakdown h3,.journey-guidance h3 { font-size:1.05rem; margin:0 0 .65rem; }
+.commute-breakdown dl { margin:0; }
+.commute-breakdown dl>div { display:flex; justify-content:space-between; align-items:baseline; gap:1rem; padding:.4rem 0; border-bottom:1px solid #e3e8e1; }
+.commute-breakdown dt { font-size:.9rem; line-height:1.4; }
+.commute-breakdown dd { margin:0; font-weight:700; white-space:nowrap; }
+.journey-guidance { padding:1rem; margin:1rem 0; border-radius:12px; border:1px solid #bbcfc6; background:#edf5ef; }
+.journey-guidance.uncertain { background:#f4f1e4; border-color:#ddd0a0; }
+.journey-guidance.tight { background:#fff0e9; border-color:#e6b296; }
+.journey-guidance p { line-height:1.5; }
+.backup-guidance { border-top:1px solid #d8d6ca; padding-top:.75rem; }
+
+#leave-countdown { font-size:clamp(24px,7vw,38px); letter-spacing:-1px; overflow-wrap:anywhere; max-width:100%; }

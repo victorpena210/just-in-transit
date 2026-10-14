@@ -46,18 +46,20 @@ public final class TransitModels {
             boolean meetsBuffers,String rating,Long nextBusMinutes,Backup backup) {
             this(first,second,leaveHome,atWork,transferMargin,arrivalMargin,transferWait,meetsBuffers,rating,nextBusMinutes,backup,true);
         }
+        public CommuteTiming.Summary timing(CommuteForm form) { return CommuteTiming.summarize(form,this); }
         public String deadlineLabel() { return !hasDeadline?"No arrival deadline set":arrivalMargin<0?(-arrivalMargin)+" min late":arrivalMargin==0?"At your deadline":arrivalMargin+" min before your deadline"; }
         public String backupSummary() { return backup==null?"No later matching "+second.route()+" found in the checked service days.":
             "If you miss this "+second.route()+": estimated arrival "+backup.workDisplay()+" · "+backup.deadlineLabel()+"."; }
         public String comparisonLabel(Option best) {
             if(equals(best))return !hasDeadline?"Earliest arrival":arrivalMargin<0?"Earliest remaining arrival":"Recommended";
             if(arrivalMargin<0)return "Later arrival";
+            if(first.equals(best.first))return "Different transfer";
             if(leaveHome.isAfter(best.leaveHome))return "Leave later";
             if(leaveHome.isBefore(best.leaveHome) && (transferMargin>best.transferMargin || arrivalMargin>best.arrivalMargin))return "More breathing room";
             return "Earlier departure";
         }
         public String comparisonDetail(Option best) {
-            if(equals(best))return meetsBuffers?"Meets your requested walking times and buffers.":arrivalMargin<0?"Earliest arrival on your saved route; your deadline stays unchanged.":"Fits your deadline with less room than requested.";
+            if(equals(best))return meetsBuffers?"Meets your walks, wait windows and delay allowance.":arrivalMargin<0?"Earliest arrival on your saved route; your deadline stays unchanged.":"Fits your deadline; review the wait windows and delay allowance.";
             long difference=Duration.between(best.leaveHome,leaveHome).toMinutes();
             return (difference>0?difference+" min longer at home":(-difference)+" min earlier departure")+" · "+transferMargin+" min after the transfer walk · "+deadlineLabel()+".";
         }
@@ -68,7 +70,7 @@ public final class TransitModels {
             return count==4 ? "Live estimates" : count==0 ? "Scheduled times" : "Live + scheduled times";
         }
         public boolean connectionConfirmed() { return first.alight().directPrediction() && second.board().directPrediction(); }
-        public String displayRating() { return meetsBuffers && !connectionConfirmed()?"Buffers met · estimated":rating; }
+        public String displayRating() { return meetsBuffers && !connectionConfirmed()?"Preferences met · estimated":rating; }
         public String confidenceWarning() {
             return connectionConfirmed()?"Live transfer estimates are available; they can still change.":
                 "Connection unconfirmed: transfer timing includes scheduled, carried-forward, proxy, or uncertain estimates. Missing live data does not mean the bus is on time.";
