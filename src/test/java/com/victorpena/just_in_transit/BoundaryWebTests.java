@@ -54,7 +54,7 @@ class BoundaryWebTests {
         return post(endpoint).with(csrf()).param("origin","Example starting point").param("destination","Example clock-in location")
             .param("date","2030-01-02").param("arriveBy","09:00").param("walkToStop","8").param("transferWalk","3")
             .param("walkToWork","10").param("boardingBuffer","3").param("transferBuffer","5").param("arrivalBuffer","5")
-            .param("originStop","81799").param("destinationStop","83463").param("locationMode","manual");
+            .param("originStop","81799").param("destinationStop","83463");
     }
     @Test void rendersBackupArrivalAdvisoriesEscapedAndAttribution() throws Exception {
         var response=mvc.perform(form("/plan")).andExpect(status().isOk())
@@ -70,6 +70,40 @@ class BoundaryWebTests {
     }
     @Test void addressModeRequiresResolvedMatchingAddresses() throws Exception {
         mvc.perform(form("/save").param("locationMode","address")).andExpect(status().isOk()).andExpect(model().attributeHasErrors("commute"));
+        Assertions.assertEquals(0,repository.count());
+    }
+    @Test void confirmedStartCanBeSavedWithManualDestinationAndUsesCoordinatesForWalkingLink() throws Exception {
+        mvc.perform(form("/save").param("locationMode","origin")
+            .param("originLat","29.425194").param("originLon","-98.454422").param("resolvedOrigin","Example starting point"))
+            .andExpect(status().isOk()).andExpect(model().hasNoErrors())
+            .andExpect(content().string(containsString("origin=29.425194%2C-98.454422")));
+        var restored=repository.findById(1L).orElseThrow().form(DAY);
+        Assertions.assertTrue(restored.usesAddress("origin"));Assertions.assertFalse(restored.usesAddress("destination"));
+        Assertions.assertTrue(restored.isLocationResolved());Assertions.assertNull(restored.destinationLat());
+    }
+    @Test void confirmedDestinationCanBeSavedWithManualStart() throws Exception {
+        mvc.perform(form("/save").param("locationMode","destination")
+            .param("destinationLat","29.593").param("destinationLon","-98.608").param("resolvedDestination","Example clock-in location"))
+            .andExpect(status().isOk()).andExpect(model().hasNoErrors())
+            .andExpect(content().string(containsString("destination=29.593%2C-98.608")));
+        var restored=repository.findById(1L).orElseThrow().form(DAY);
+        Assertions.assertFalse(restored.usesAddress("origin"));Assertions.assertTrue(restored.usesAddress("destination"));
+        Assertions.assertTrue(restored.isLocationResolved());
+    }
+    @Test void incompleteOrChangedSingleEndPointCannotBeSaved() throws Exception {
+        for(String mode:List.of("origin","destination")) {
+            mvc.perform(form("/save").param("locationMode",mode))
+                .andExpect(status().isOk()).andExpect(model().attributeHasErrors("commute"));
+        }
+        mvc.perform(form("/save").param("locationMode","origin").param("originLat","29.425194")
+            .param("originLon","-98.454422").param("resolvedOrigin","Old starting point"))
+            .andExpect(status().isOk()).andExpect(model().attributeHasErrors("commute"));
+        Assertions.assertEquals(0,repository.count());
+    }
+    @Test void singleEndPointStillRequiresNearbyEligibleStop() throws Exception {
+        mvc.perform(form("/save").param("locationMode","origin").param("originLat","29.8")
+            .param("originLon","-98.8").param("resolvedOrigin","Example starting point"))
+            .andExpect(status().isOk()).andExpect(model().attributeHasFieldErrors("commute","originStop"));
         Assertions.assertEquals(0,repository.count());
     }
     @Test void mapEndpointsRequireCsrfAndDoNotExposeRawProviderErrors() throws Exception {
@@ -88,5 +122,23 @@ class BoundaryWebTests {
     }
     @Test void manualSettingsCanBeRestoredWithIncompleteForm() throws Exception {
         mvc.perform(post("/settings").with(csrf()).param("locationMode","manual")).andExpect(status().isOk());
+    }
+    @Test void stopSearchWorksWithExternalMapsDisabledAndChecksTheDate() throws Exception {
+        mvc.perform(post("/maps/stop-search").with(csrf()).contentType("application/json")
+            .content("{\"kind\":\"origin\",\"query\":\"Houston & Mittman\",\"date\":\"2030-01-02\"}"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(1))
+            .andExpect(jsonPath("$[0].id").value("81799"));
+        mvc.perform(post("/maps/stop-search").with(csrf()).contentType("application/json")
+            .content("{\"kind\":\"origin\",\"query\":\"Mittman\",\"date\":\"2030-01-03\"}"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(0));
+    }
+    @Test void stopSearchRequiresCsrfAndValidInputs() throws Exception {
+        mvc.perform(post("/maps/stop-search").contentType("application/json")
+            .content("{\"kind\":\"origin\",\"query\":\"Mittman\",\"date\":\"2030-01-02\"}"))
+            .andExpect(status().isForbidden());
+        for(String body:List.of("{\"kind\":\"transfer\",\"query\":\"Mittman\",\"date\":\"2030-01-02\"}",
+                "{\"kind\":\"origin\",\"query\":\" \u0020\",\"date\":\"2030-01-02\"}","{\"kind\":\"origin\",\"query\":\"Mittman\"}"))
+            mvc.perform(post("/maps/stop-search").with(csrf()).contentType("application/json").content(body))
+                .andExpect(status().isBadRequest());
     }
 }

@@ -4,104 +4,240 @@
     <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#173f35">
     <title>Just in Transit · Your commute, with room to breathe</title>
-    <link rel="stylesheet" th:href="@{/app.css}"><script defer th:src="@{/app.js}"></script>
+    <meta name="referrer" content="strict-origin-when-cross-origin">
+    <link rel="stylesheet" th:href="@{/vendor/leaflet/leaflet.css}"><link rel="stylesheet" th:href="@{/app.css(v='journey-upgrade-2')}">
+    <script defer th:src="@{/vendor/leaflet/leaflet.js}"></script><script defer th:src="@{/app.js(v='journey-upgrade-2')}"></script><script defer th:src="@{/live-map.js(v='journey-upgrade-2')}"></script>
+    <script defer th:src="@{/daily.js(v='journey-upgrade-2')}"></script>
+    <script defer src="/offline-card.js"></script><script defer src="/stage.js"></script>
 </head>
-<body>
+<body th:classappend="${hasJourneyContent ? 'commute-ready' : ''}">
 <header class="topbar wrap">
     <a class="brand" href="/" aria-label="Just in Transit home"><span class="brand-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><rect x="5" y="3" width="14" height="16" rx="4"/><path d="M5 11h14M8 6h8M8 19v2m8-2v2"/><circle cx="8.5" cy="15.5" r=".7"/><circle cx="15.5" cy="15.5" r=".7"/></svg></span>just in <strong>transit.</strong></a>
-    <span class="location">SAN ANTONIO <span class="location-dot"></span> VIA</span>
+    <div class="header-actions"><a href="/history">Trip history</a><span class="location">SAN ANTONIO <span class="location-dot"></span> VIA</span><form th:if="${protectedAccess}" th:action="@{/logout}" method="post"><button class="text-button" type="submit">Sign out</button></form></div>
 </header>
 <main class="wrap">
-    <section class="hero">
-        <div><p class="eyebrow">A LITTLE LESS WAITING. A LITTLE MORE CERTAINTY.</p><h1>Your commute.<br><em>Room to breathe.</em></h1><p class="intro">Find a departure that leaves time for the walk, the transfer, and the unexpected.</p></div>
-        <div class="route-summary"><span class="small-label">YOUR FIRST ROUTE</span><div class="route-pills"><b class="bus-pill">24</b><span aria-hidden="true">→</span><b class="bus-pill pale">93</b></div><strong>East Side → Six Flags</strong><span>Choose nearby stops · transfer at Martin &amp; Leona</span><small>All times in San Antonio · Central Time</small></div>
+    <section class="hero compact-hero">
+        <div><p class="eyebrow">SAN ANTONIO · ALL TIMES CENTRAL</p><h1 th:text="${hasJourneyContent ? 'Your commute' : 'Plan your commute'}">Plan your commute</h1><p class="intro" th:text="${route.title + ' · with time for the walks.'}"></p></div>
+        <div class="route-strip"><b class="mini-bus" th:text="${route.firstRoute}">24</b><span>Martin &amp; Leona</span><span aria-hidden="true">→</span><b class="mini-bus light" th:text="${route.secondRoute}">93</b><span th:text="${route.key == 'home' ? 'East Side' : 'Six Flags'}"></span></div>
     </section>
+    <nav class="commute-tabs" th:if="${journey == null}" aria-label="Choose commute"><a href="/?corridor=work" th:attr="aria-current=${route.key == 'work' ? 'page' : null}">Going to work · 24 → 93</a><a href="/?corridor=home" th:attr="aria-current=${route.key == 'home' ? 'page' : null}">Going home · 93 → 24</a></nav>
+    <p class="notice" th:if="${route.key == 'home' and journey == null}">Return-route setup: the downtown-bound 93 does not serve the employee-entrance stops in this schedule. Check your walk to La Cantera &amp; Fiesta Texas Dr (75229), or choose another supported stop. The return 24 uses the opposite-side Houston &amp; Mittman stop (81793). Enter both walking times before saving.</p>
     <div class="notice" role="status" th:if="${notice}" th:text="${notice}"></div>
+    <section class="panel resume-journey" th:if="${resumeJourney != null and journey == null}">
+        <h2>Resume your trip?</h2><p th:text="${resumeJourney.label()}"></p>
+        <p class="small-note">Your last confirmed step is saved. Resume to refresh the remaining estimates.</p>
+        <form th:action="@{/journey/resume}" method="post"><button class="primary" name="action" value="resume">Resume trip</button><button class="text-button" name="action" value="discard">Discard saved trip</button></form>
+    </section>
     <div class="workspace">
-        <section class="panel setup" aria-labelledby="setup-title">
-            <div class="section-heading"><span class="step-number">01</span><div><h2 id="setup-title">Set your commute</h2><p>Start at your door. Arrive ready.</p></div></div>
-            <noscript><p class="field-note">Address lookup needs JavaScript. Select your stops and enter walking minutes below.</p></noscript>
-            <form id="commute-form" th:action="@{/plan}" th:object="${commute}" method="post">
-                <div class="errors" role="alert" th:if="${#fields.hasErrors('*')}"><strong>Check your commute details.</strong><ul><li th:each="error : ${#fields.errors('*')}" th:text="${error}"></li></ul></div>
-                <label for="locationMode">How to choose your stops</label>
-                <select id="locationMode" th:field="*{locationMode}"><option value="manual">Select stops and walking times myself</option><option value="address">Find stops using my addresses</option></select>
-                <p class="field-note">Supports the 24 toward Martin &amp; Leona, then the 93 away from downtown. Nearby-stop search checks up to 2 km around each location.</p>
+            <section class="panel daily-commute" th:if="${hasSaved and journey == null}">
+                <p class="eyebrow">YOUR SAVED COMMUTE</p><h2 th:text="${route.title}"></h2>
+                <p class="saved-route"><b th:text="${route.firstRoute}">24</b> <span th:text="${originStopName}"></span> → Martin &amp; Leona<br><b th:text="${route.secondRoute}">93</b> <span th:text="${destinationStopName}"></span></p>
+                <form id="daily-form" th:action="@{/daily}" method="post">
+                    <input type="hidden" name="corridor" th:value="${route.key}"><label for="daily-plan-mode">Plan by</label><select id="daily-plan-mode" name="planMode"><option value="arrive" th:selected="${!commute.departing()}">Arrive by</option><option value="depart" th:selected="${commute.departing()}">Leave after</option></select>
+                    <div class="field-pair"><div><label for="daily-date">Travel date</label><input id="daily-date" name="date" type="date" th:value="${daily.date}" required></div><div><label for="daily-time">Time (Central)</label><input id="daily-time" name="arriveBy" type="time" th:value="${daily.arriveBy}" required></div></div>
+<fieldset class="stage-choice"><legend>Where are you now?</legend><label for="daily-stage">Start from</label><select id="daily-stage" name="startMode" data-stage><option value="home" th:selected="${commute.startMode == 'home'}" th:text="${route.key == 'home' ? 'At work / starting point' : 'At home / starting point'}"></option><option value="stop" th:selected="${commute.atStop()}" th:text="${'At the first bus stop (' + route.firstRoute + ')'}"></option><option value="onboard" th:selected="${commute.onboard()}" th:text="${'Already on the first bus (' + route.firstRoute + ')'}"></option></select><div data-boarded-choices><label for="daily-trip">Which bus did you board?</label><select id="daily-trip" name="firstTrip"><option value="">Choose your actual bus</option><option th:each="trip : ${boardingChoices}" th:value="${trip.key}" th:text="${trip.label}" th:selected="${trip.key == commute.firstTrip}"></option></select><p class="small-note">Check the route, boarding estimate and transfer time. These are estimates, not proof of your bus. If it is missing, refresh the list or check VIA. Earlier boarding and departure times will not be recorded as actual.</p><button class="text-button" type="submit" name="refreshTrips" value="true" formnovalidate>Refresh bus list</button></div><p class="small-note">At-stop and on-board starts skip the initial walk and use your current stage today. An arrival deadline stays in place; a leave-after time is replaced by now.</p></fieldset>
+                    <button class="secondary" type="submit">Update today's plan</button>
+                </form><p class="small-note">Your saved setup stays the same. All times Central.</p>
+            </section>
+        <details id="edit-commute" class="panel setup" th:if="${journey == null}" th:open="${editOpen}" aria-labelledby="setup-title">
+            <summary><span id="setup-title" th:text="${hasSaved or hasJourneyContent ? 'Edit saved setup' : 'Where are you going?'}">Where are you going?</span><small>1. Start · 2. Destination · 3. Travel time</small></summary>
+            <form id="commute-form" th:action="@{/plan}" th:object="${commute}" method="post" th:attr="data-first-route=${route.firstRoute},data-second-route=${route.secondRoute}">
+                <input type="hidden" th:field="*{corridor}">
+                <div class="errors" role="alert" th:if="${#fields.hasErrors('*')}"><strong>Check these details.</strong><ul><li th:each="error : ${#fields.errors('*')}" th:text="${error}"></li></ul></div>
                 <input type="hidden" th:field="*{originLat}"><input type="hidden" th:field="*{originLon}">
                 <input type="hidden" th:field="*{destinationLat}"><input type="hidden" th:field="*{destinationLon}">
                 <input type="hidden" th:field="*{resolvedOrigin}"><input type="hidden" th:field="*{resolvedDestination}">
-                <label for="origin">Starting point / home address</label><input id="origin" th:field="*{origin}" maxlength="200" required placeholder="Street address, San Antonio, TX" autocomplete="street-address">
-                <button class="lookup-button" type="button" data-search="origin">Find starting point</button>
-                <div id="origin-results" class="place-results" aria-label="Starting point matches"></div><p id="origin-status" class="field-note" role="status"></p>
-                <label for="originStop">Board the 24 at</label><select id="originStop" th:field="*{originStop}" required><option th:each="stop : ${originStops}" th:value="${stop.id}" th:text="${stop.name + ' · ' + stop.id}"></option></select>
-                <label for="destination">Destination / clock-in location</label><input id="destination" th:field="*{destination}" maxlength="200" required placeholder="Exact entrance or street address">
-                <button class="lookup-button" type="button" data-search="destination">Find destination</button>
-                <div id="destination-results" class="place-results" aria-label="Destination matches"></div><p id="destination-status" class="field-note" role="status"></p>
-                <label for="destinationStop">Get off the 93 at</label><select id="destinationStop" th:field="*{destinationStop}" required><option th:each="stop : ${destinationStops}" th:value="${stop.id}" th:text="${stop.name + ' · ' + stop.id}"></option></select>
-                <div class="field-pair"><div><label for="date">Travel date</label><input id="date" type="date" th:field="*{date}" required></div><div><label for="arriveBy">Arrive by</label><input id="arriveBy" type="time" th:field="*{arriveBy}" required></div></div>
-                <div class="form-divider"></div><h3>Every walk counts <span>minutes</span></h3>
-                <div class="number-row"><label for="walkToStop">Starting point → selected 24 stop</label><input id="walkToStop" type="number" min="0" max="120" th:field="*{walkToStop}" required></div>
-                <div class="number-row"><label for="transferWalk">Walk between the 24 and 93</label><input id="transferWalk" type="number" min="0" max="30" th:field="*{transferWalk}" required></div>
-                <div class="number-row"><label for="walkToWork">Selected 93 stop → destination</label><input id="walkToWork" type="number" min="0" max="120" th:field="*{walkToWork}" required></div>
-                <button class="lookup-button" id="transfer-lookup" type="button">Calculate the transfer walk</button>
-                <p id="transfer-status" class="field-note" role="status"></p>
-                <p class="field-note">Address lookup offers nearby stops in the correct direction, ordered by straight-line distance. Selecting a stop calculates a pedestrian walking route. Adjust the minutes for crossings, gates, or your walking pace.</p>
-                <details class="buffers"><summary>Give yourself a buffer</summary><div class="number-row"><label for="boardingBuffer">At your first bus stop</label><input id="boardingBuffer" type="number" min="1" max="30" th:field="*{boardingBuffer}" required></div><div class="number-row"><label for="transferBuffer">After the transfer walk</label><input id="transferBuffer" type="number" min="1" max="30" th:field="*{transferBuffer}" required></div><div class="number-row"><label for="arrivalBuffer">Before your arrival deadline</label><input id="arrivalBuffer" type="number" min="0" max="60" th:field="*{arrivalBuffer}" required></div></details>
+                <fieldset class="location-step" id="origin-step">
+                    <legend><span class="step-number">1</span>Starting point</legend>
+                    <label for="origin">Starting point name or address</label><input id="origin" th:field="*{origin}" maxlength="200" required placeholder="Home, or a street address">
+                    <div class="location-actions"><button class="lookup-button" type="button" data-manual="origin">Use my stop</button><button class="lookup-button" type="button" data-search="origin">Search address</button><button class="lookup-button" type="button" data-map-pin="origin">Set on map</button><button class="lookup-button" type="button" data-locate-start>Use my location</button></div>
+                    <p class="search-source-note">Searches San Antonio. Numbered addresses go to the U.S. Census geocoder; place names and fallback searches go to Photon.</p>
+                    <div id="origin-results" class="place-results" aria-label="Starting point matches"></div>
+                    <p id="origin-status" class="field-note" role="status" aria-live="polite"></p>
+                    <p id="origin-location-note" class="field-note"></p><a id="origin-location-map" class="location-map" hidden target="_blank" rel="noopener noreferrer">Check selected point ↗</a>
+                    <div class="location-fallback" id="origin-fallback" hidden><p id="origin-fallback-message">Set your entrance on the map, or use a stop and walking minutes.</p><button class="lookup-button" type="button" data-search-pin="origin">Set entrance on map</button><button class="text-button" type="button" data-manual="origin">Use stop and walking minutes</button></div>
+                    <label for="originStop" th:text="${'Board the ' + route.firstRoute + ' at'}">Board the 24 at</label><select id="originStop" th:field="*{originStop}" required><option th:each="stop : ${originStops}" th:value="${stop.id}" th:text="${stop.name + ' · ' + stop.id}"></option></select>
+                    <details class="stop-finder"><summary th:text="${'Find a different ' + route.firstRoute + ' stop'}">Find a different 24 stop</summary>
+                        <label for="origin-stop-query">Stop name, intersection, or stop ID</label><input id="origin-stop-query" type="search" maxlength="100" placeholder="Houston &amp; Mittman" autocomplete="off">
+                        <button class="lookup-button" type="button" data-stop-search="origin" th:text="${'Search ' + route.firstRoute + ' stops'}">Search 24 stops</button>
+                        <p id="origin-stop-status" class="field-note" role="status">Search eligible first-bus stops for your travel date.</p>
+                        <div id="origin-stop-results" class="stop-results" aria-label="Matching boarding stops"></div>
+                    </details>
+                    <div class="number-row"><label for="walkToStop">Walk to the first stop <span>(minutes)</span></label><input id="walkToStop" type="number" min="0" max="120" th:field="*{walkToStop}" required></div>
+                    <p id="origin-method" class="method-note"></p><button class="text-button manual-switch" type="button" data-manual="origin">Use stop and walking minutes instead</button>
+                </fieldset>
+                <fieldset class="location-step" id="destination-step">
+                    <legend><span class="step-number">2</span>Destination</legend>
+                    <label for="destination">Address, entrance or destination name</label><input id="destination" th:field="*{destination}" maxlength="200" required placeholder="Where do you need to clock in?">
+                    <div class="location-actions"><button class="lookup-button" type="button" data-manual="destination">Use my stop</button><button class="lookup-button" type="button" data-search="destination">Search address</button><button class="lookup-button" type="button" data-map-pin="destination">Set on map</button></div>
+                    <p class="search-source-note">Uses the same address services as your starting point.</p>
+                    <div id="destination-results" class="place-results" aria-label="Destination matches"></div>
+                    <p id="destination-status" class="field-note" role="status" aria-live="polite"></p>
+                    <p id="destination-location-note" class="field-note"></p><a id="destination-location-map" class="location-map" hidden target="_blank" rel="noopener noreferrer">Check selected point ↗</a>
+                    <div class="location-fallback" id="destination-fallback" hidden><p id="destination-fallback-message">Set your entrance on the map, or use a stop and walking minutes.</p><button class="lookup-button" type="button" data-search-pin="destination">Set entrance on map</button><button class="text-button" type="button" data-manual="destination">Use stop and walking minutes</button></div>
+                    <label for="destinationStop" th:text="${'Get off the ' + route.secondRoute + ' at'}">Get off the 93 at</label><select id="destinationStop" th:field="*{destinationStop}" required><option th:each="stop : ${destinationStops}" th:value="${stop.id}" th:text="${stop.name + ' · ' + stop.id}"></option></select>
+                    <details class="stop-finder"><summary th:text="${'Find a different ' + route.secondRoute + ' stop'}">Find a different 93 stop</summary>
+                        <label for="destination-stop-query">Stop name, intersection, or stop ID</label><input id="destination-stop-query" type="search" maxlength="100" placeholder="Fiesta Texas or stop ID" autocomplete="off">
+                        <button class="lookup-button" type="button" data-stop-search="destination" th:text="${'Search ' + route.secondRoute + ' stops'}">Search 93 stops</button>
+                        <p id="destination-stop-status" class="field-note" role="status">Search eligible second-bus stops for your travel date.</p>
+                        <div id="destination-stop-results" class="stop-results" aria-label="Matching destination stops"></div>
+                    </details>
+                    <div class="number-row"><label for="walkToWork">Final walk <span>(minutes)</span></label><input id="walkToWork" type="number" min="0" max="120" th:field="*{walkToWork}" required></div>
+                    <p id="destination-method" class="method-note"></p><button class="text-button manual-switch" type="button" data-manual="destination">Use stop and walking minutes instead</button>
+                </fieldset>
+                <fieldset class="location-step arrival-step"><legend><span class="step-number">3</span>Travel time</legend><label for="planMode">Plan by</label><select id="planMode" th:field="*{planMode}"><option value="arrive">Arrive by</option><option value="depart">Leave after</option></select>
+                    <div class="field-pair"><div><label for="date">Travel date</label><input id="date" type="date" th:field="*{date}" required></div><div><label for="arriveBy">Time (Central)</label><input id="arriveBy" type="time" th:field="*{arriveBy}" required></div></div>
+                </fieldset>
+<fieldset class="stage-choice"><legend>Where are you now?</legend><label for="setup-stage">Start from</label><select id="setup-stage" name="startMode" data-stage><option value="home" th:selected="${commute.startMode == 'home'}" th:text="${route.key == 'home' ? 'At work / starting point' : 'At home / starting point'}"></option><option value="stop" th:selected="${commute.atStop()}" th:text="${'At the first bus stop (' + route.firstRoute + ')'}"></option><option value="onboard" th:selected="${commute.onboard()}" th:text="${'Already on the first bus (' + route.firstRoute + ')'}"></option></select><div data-boarded-choices><label for="setup-trip">Which bus did you board?</label><select id="setup-trip" name="firstTrip"><option value="">Choose your actual bus</option><option th:each="trip : ${boardingChoices}" th:value="${trip.key}" th:text="${trip.label}" th:selected="${trip.key == commute.firstTrip}"></option></select><p class="small-note">Check the route, boarding estimate and transfer time. These are estimates, not proof of your bus. If it is missing, refresh the list or check VIA. Earlier boarding and departure times will not be recorded as actual.</p><button class="text-button" type="submit" th:formaction="@{/settings}" formnovalidate>Refresh bus list</button></div><p class="small-note">At-stop and on-board starts skip the initial walk and use your current stage today. An arrival deadline stays in place; a leave-after time is replaced by now.</p></fieldset>
+                <details class="buffers"><summary>Transfer walk &amp; extra time</summary>
+                    <div class="number-row"><label for="transferWalk">Walk between the 24 and 93 (minutes)</label><input id="transferWalk" type="number" min="0" max="30" th:field="*{transferWalk}" required></div>
+                    <button class="lookup-button" id="transfer-lookup" type="button">Calculate transfer walk</button><p id="transfer-status" class="field-note" role="status"></p>
+                    <div class="number-row"><label for="boardingBuffer">Early at your first stop (minutes)</label><input id="boardingBuffer" type="number" min="1" max="30" th:field="*{boardingBuffer}" required></div>
+                    <div class="number-row"><label for="transferBuffer">Extra transfer time (minutes)</label><input id="transferBuffer" type="number" min="1" max="30" th:field="*{transferBuffer}" required></div>
+                    <div class="number-row"><label for="arrivalBuffer">Early at your destination (minutes)</label><input id="arrivalBuffer" type="number" min="0" max="60" th:field="*{arrivalBuffer}" required></div>
+                </details>
+                <div id="location-mode-control"><label for="locationMode">Location method</label><select id="locationMode" th:field="*{locationMode}"><option value="manual">Manual stops and walking minutes</option><option value="address">Confirmed map points at both ends</option><option value="origin">Map point for start, manual destination</option><option value="destination">Manual start, map point for destination</option></select></div>
+                <noscript><p class="field-note">Choose manual stops and walking minutes. Address search and map pins need JavaScript.</p></noscript>
+                <p id="setup-feedback" class="field-note lookup-error" role="alert"></p>
                 <button id="plan-button" class="primary" type="submit">Find my departure <span aria-hidden="true">↗</span></button>
-                <button class="secondary" type="submit" th:formaction="@{/save}">Save commute on this computer</button>
-                <p class="privacy-note">Addresses are sent to Photon only when you click Find. Selected coordinates are sent to Valhalla when you calculate a walk. Map links share their endpoints with Google when opened. Planning and automatic refresh do not repeat these lookups. Saving is optional.</p>
+                <button class="secondary" type="submit" th:formaction="@{/save}">Save commute &amp; find departure</button>
+                <p class="field-note">Save once to reuse your stops, confirmed map points, walking times and usual planning time. You can use a stop without looking up an address.</p>
+                <details class="privacy-details"><summary>About locations &amp; privacy</summary><p class="privacy-note">Supports Going to Work (24 → 93) and Going Home (93 → 24), with separately checked stop order for each direction. Nearby-stop search covers 2 km around a confirmed point. A street result only helps you position the map; you confirm the entrance yourself. Numbered addresses are sent to the U.S. Census geocoder when you search. Place names, and fallback searches after an unmatched address, go to Photon. Census positions are estimated along a street and require you to confirm the entrance. Walking coordinates are sent to Valhalla when you choose a nearby stop. Map links open Google Maps. Saving is optional.</p></details>
             </form>
-            <form th:if="${hasSaved}" th:action="@{/forget}" method="post"><button class="text-button" type="submit">Delete saved commute</button></form>
-        </section>
+            <form th:if="${hasSaved}" th:action="@{/forget}" method="post"><input type="hidden" name="corridor" th:value="${route.key}"><button class="text-button" type="submit">Delete this saved commute</button></form>
+        </details>
         <div class="journey-column">
-            <section class="panel results" aria-labelledby="results-title">
-                <div class="section-heading"><span class="step-number">02</span><div><h2 id="results-title">Your departure plan</h2><p>Walking + buses + breathing room.</p></div></div>
-                <div th:if="${result == null}" class="empty-state"><span class="path-icon" aria-hidden="true">⌁</span><h3>A better morning starts here.</h3><p>Add your starting point and check the walking times. We’ll compare 24 → 93 connections against your arrival deadline.</p><div class="journey-preview"><span>Home</span><i></i><b>24</b><i></i><b>93</b><i></i><span>Work</span></div><p class="small-note">Uses VIA’s published schedule and live estimates when available. No invented risk percentages.</p></div>
+
+            <section id="active-journey" class="panel active-journey" th:if="${journey != null}" aria-labelledby="journey-title">
+                <p class="eyebrow">YOUR COMMUTE IS ACTIVE</p>
+                <h2 id="journey-title" th:text="${journey.phaseLabel()}"></h2>
+                <p class="small-note">Your selected buses stay with you. Mark each step as you go.</p>
+                <p class="date-context" th:text="${#temporals.format(commute.date, 'EEEE, MMMM d')}"></p>
+                <div class="active-arrival" th:if="${journey.arrivalAvailable()}"><span th:text="${journey.finished() ? 'Arrived at your destination' : 'Estimated at your destination'}"></span><strong th:text="${journey.option.workDisplay()}"></strong><span th:text="${journey.deadlineLabel}"></span></div>
+                <div class="active-arrival" th:unless="${journey.arrivalAvailable()}"><span>Destination arrival</span><strong>Unconfirmed</strong></div>
+                <p class="freshness">Checked <span th:text="${checkedAt}"></span> · feed timestamp: <span th:text="${feedUpdated}"></span></p>
+                <div class="journey-warnings" role="status"><p th:each="warning : ${journey.warnings}" th:text="${warning}"></p></div>
+                <form th:if="${journey.canAdvance()}" th:action="@{/journey/action}" method="post" class="progress-form">
+                    <input type="hidden" name="revision" th:value="${journey.state.revision}"><input type="hidden" name="action" value="advance">
+                    <button class="primary" type="submit" th:text="${journey.nextLabel()}"></button>
+                </form>
+                <form th:if="${journey.canMarkAtStop()}" th:action="@{/journey/action}" method="post">
+                    <input type="hidden" name="revision" th:value="${journey.state.revision}"><input type="hidden" name="action" value="at24"><button class="secondary" type="submit" th:text="${'I am at the ' + route.firstRoute + ' stop'}">I'm at the first stop</button>
+                </form>
+                <form th:if="${journey.canMiss24() and !journey.canMarkAtStop()}" th:action="@{/journey/action}" method="post">
+                    <input type="hidden" name="revision" th:value="${journey.state.revision}"><input type="hidden" name="action" value="missed24"><button class="secondary" type="submit" th:text="${journey.state.needs24 ? 'Check for another ' + route.routes() : 'I missed the ' + route.firstRoute + ' · find another'}"></button>
+                    <p class="small-note">Recalculates from this boarding stop, keeping your planning settings and final walk.</p>
+                </form>
+                <form th:if="${journey.canMiss93()}" th:action="@{/journey/action}" method="post">
+                    <input type="hidden" name="revision" th:value="${journey.state.revision}"><input type="hidden" name="action" value="missed93">
+                    <button class="secondary" type="submit" th:text="${journey.hasConnection() ? 'I missed the ' + route.secondRoute + ' · find another' : 'Check for the next ' + route.secondRoute}"></button>
+                </form>
+                <form th:if="${journey.canUndo()}" th:action="@{/journey/action}" method="post"><input type="hidden" name="revision" th:value="${journey.state.revision}"><button class="text-button" name="action" value="undo" type="submit">Undo last step</button></form>
+                <p class="small-note" th:if="${commute.onboard()}">You joined while already aboard. Earlier boarding and departure times are not recorded as actual.</p>
+                <div class="timeline active-timeline">
+                    <div th:classappend="${journey.firstBoardDone() ? 'completed-step' : ''}"><b class="mini-bus" th:text="${route.firstRoute}">24</b><p><strong th:text="${originStopName}"></strong><span th:text="${journey.option.first.board.source}"></span></p><time th:text="${journey.option.first.board.display()}"></time></div>
+                    <div th:classappend="${journey.firstDone() ? 'completed-step' : ''}"><span class="timeline-dot"></span><p><strong>Martin &amp; Leona</strong><span th:text="${journey.option.first.alight.source}"></span></p><time th:text="${journey.option.first.alight.display()}"></time></div>
+                    <p class="walk-line" th:text="${commute.transferWalk + ' min transfer walk'}"></p>
+                    <div th:if="${journey.hasConnection()}" th:classappend="${journey.secondBoardDone() ? 'completed-step' : ''}"><b class="mini-bus light" th:text="${route.secondRoute}">93</b><p><strong>Martin Opposite Leona</strong><span th:text="${journey.option.second.board.source}"></span></p><time th:text="${journey.option.second.board.display()}"></time></div>
+                    <div th:if="${journey.hasConnection()}" th:classappend="${journey.secondDone() ? 'completed-step' : ''}"><span class="timeline-dot"></span><p><strong th:text="${destinationStopName}"></strong><span th:text="${journey.option.second.alight.source}"></span></p><time th:text="${journey.option.second.alight.display()}"></time></div>
+                    <p class="walk-line" th:text="${commute.walkToWork + ' min final walk to your destination'}"></p>
+                </div>
+                <div th:unless="${journey.finished()}" class="journey-refresh"><p class="small-note">The map’s refresh control also updates these remaining estimates while the page is visible. Check again when you unlock your phone.</p><a href="/">Refresh all details ↻</a></div>
+                <div class="walking-links"><a th:href="${transferMap}" target="_blank" rel="noopener noreferrer">Transfer walk ↗</a><a th:href="${workMap}" target="_blank" rel="noopener noreferrer">Final walk ↗</a></div>
+                <p class="small-note" th:text="${journey.state.facts.keepHistory ? 'A trip report will be saved only when you confirm arrival and finish.' : 'Trip history is off for this commute.'}"></p>
+                <form th:action="@{/journey/action}" method="post" class="end-journey"><input type="hidden" name="revision" th:value="${journey.state.revision}"><input type="hidden" name="action" value="end"><button class="secondary" type="submit" th:text="${journey.finished() ? 'Finish commute' : 'End commute and return to planning'}"></button></form>
+                <p class="privacy-note">Your last confirmed step is saved for up to 18 hours, including across a server restart. Reopen in the same browser to resume. Finishing, ending, discarding or deleting your commute removes the recovery checkpoint. A completed report is retained only if you opted in; delete it from Trip history. Signing out removes access from this browser. Find me is optional and only runs while the page is visible. No background tracking or notifications.</p>
+            </section>
+            <section class="panel results" th:if="${journey == null and result != null}" aria-labelledby="results-title">
+                <h2 id="results-title" class="sr-only">Your departure plan</h2>
+                <div th:if="${result == null}" class="empty-state"><span class="path-icon" aria-hidden="true">⌁</span><h3>A better morning starts here.</h3><p>Add your starting point and check the walking times. We’ll compare 24 → 93 connections against your arrival deadline.</p><div class="journey-preview"><span>Home</span><i></i><b th:text="${route.firstRoute}">24</b><i></i><b th:text="${route.secondRoute}">93</b><i></i><span>Work</span></div><p class="small-note">Uses VIA’s published schedule and live estimates when available. No invented risk percentages.</p></div>
                 <div th:if="${result != null}" id="plan-results">
-                    <p class="result-message" th:text="${result.message}"></p>
-                    <p class="date-context"><span th:text="${#temporals.format(commute.date, 'EEEE, MMMM d')}"></span> · arrive by <strong th:text="${commute.arriveBy}"></strong></p>
-                    <article class="option" th:each="option, row : ${result.options}" th:classappend="${option.qualityClass()}">
-                        <div class="option-top"><span class="option-label" th:text="${row.index == 0 ? 'FIRST CHOICE' : 'ANOTHER DEPARTURE'}"></span><span class="badge" th:text="${option.rating}"></span></div>
-                        <div class="departure"><div><span>Leave home</span><strong th:text="${option.leaveDisplay()}"></strong></div><span class="arrow" aria-hidden="true">→</span><div><span>At your destination</span><strong th:text="${option.workDisplay()}"></strong></div></div>
-                        <div class="timeline">
-                            <div><b class="mini-bus">24</b><p><strong th:text="${originStopName}"></strong><span th:text="${option.first.board.source}"></span></p><time th:text="${option.first.board.display()}"></time></div>
+                    <p class="result-message" th:if="${result.lateFallback() or result.options.isEmpty()}" th:text="${result.message}"></p>
+                    <p class="freshness">Checked <span th:text="${checkedAt}"></span> · feed timestamp: <span th:text="${feedUpdated}"></span></p>
+                    <p class="date-context"><span th:text="${#temporals.format(commute.date, 'EEEE, MMMM d')}"></span> · <span th:text="${commute.departing() ? 'leave after' : 'arrive by'}"></span> <strong th:text="${commute.arriveBy}"></strong><br><a th:if="${hasSaved}" href="#daily-form">Change time or current stage ↓</a></p>
+                    <details th:if="${result.options.size() > 1}" id="compare-departures" class="compare-departures"><summary>Compare other departures</summary><div id="alternatives"></div></details>
+                    <article class="option" th:each="option, row : ${result.options}" th:classappend="${option.qualityClass()}" th:attr="data-option-index=${row.index},id=${row.index == 0 ? 'recommendation' : null},data-token=${row.index == 0 ? planToken : null},data-now=${renderedAt},data-start-mode=${commute.startMode}">
+                        <div class="option-top"><span class="option-label" th:text="${option.comparisonLabel(result.options[0])}"></span><span class="badge" th:text="${option.displayRating()}"></span></div>
+                        <div th:if="${row.index == 0}" class="departure-decision"><span id="leave-heading" th:text="${commute.onboard() ? 'At transfer stop at' : commute.atStop() ? 'First bus boards at' : 'Leave starting point at'}"></span><strong id="leave-countdown" th:text="${commute.onboard() ? option.first.alight.display() : commute.atStop() ? option.first.board.display() : option.leaveDisplay()}"></strong><small id="leave-basis">Waiting for refreshed estimates…</small></div>
+                        <p class="comparison-detail" th:unless="${row.index == 0}" th:text="${option.comparisonDetail(result.options[0])}"></p>
+                        <div class="departure"><div><span th:text="${commute.onboard() ? 'First bus boarded earlier' : commute.atStop() ? 'Board first bus' : 'Leave starting point'}"></span><strong data-decision-leave th:text="${commute.onboard() ? option.first.board.display() : commute.atStop() ? option.first.board.display() : option.leaveDisplay()}"></strong></div><span class="arrow" aria-hidden="true">→</span><div><span>At your destination</span><strong data-decision-work th:text="${option.workDisplay()}"></strong></div></div>
+                        <p class="decision-margin"><strong data-decision-deadline th:text="${option.deadlineLabel()}"></strong> · <span th:text="${route.routes()}"></span></p>
+                        <p class="decision-transfer"><strong data-decision-transfer th:text="${option.transferMargin + ' min after the transfer walk'}"></strong></p>
+                        <p class="decision-backup" data-decision-backup th:text="${option.backupSummary()}"></p>
+                        <button class="text-button" type="button" th:attr="data-map-option=${row.index}">View map ↓</button>
+                        <form th:if="${canStart}" th:action="@{/journey/start}" method="post" class="start-form">
+                            <input type="hidden" name="token" th:value="${planToken}"><input type="hidden" name="option" th:value="${row.index}">
+                            <label class="refresh-toggle"><input type="checkbox" name="keepHistory" value="true"> Save a trip report when I finish</label><p class="small-note">Optional: planned vs confirmed times and transfer outcome. No addresses or location trails. Delete reports in Trip history.</p><button class="primary" type="submit" th:text="${commute.onboard() ? 'I am on this bus · start tracking steps' : commute.atStop() ? 'I am at this stop · start commute' : 'I am leaving · start this commute'}"></button>
+                        </form>
+                        <p th:unless="${canStart}" class="small-note">You can start this commute on its travel date.</p>
+
+                        <div class="option-footer"><span th:text="${option.dataLabel()}"></span></div>
+                        <p class="confidence-note" data-decision-confidence th:text="${option.confidenceWarning()}"></p>
+                        <details class="trip-details"><summary>Stops, transfer &amp; backup bus</summary><div class="timeline">
+                            <div><b class="mini-bus" th:text="${route.firstRoute}">24</b><p><strong th:text="${originStopName}"></strong><span th:text="${option.first.board.source}"></span></p><time th:text="${option.first.board.display()}"></time></div>
                             <div class="transfer"><span class="timeline-dot"></span><p><strong>Martin &amp; Leona</strong><span th:text="${option.first.alight.source}"></span></p><time th:text="${option.first.alight.display()}"></time></div>
                             <p class="walk-line" th:text="${commute.transferWalk + ' min walk to Martin Opposite Leona'}"></p>
-                            <div><b class="mini-bus light">93</b><p><strong>Martin Opposite Leona</strong><span th:text="${option.second.board.source}"></span></p><time th:text="${option.second.board.display()}"></time></div>
+                            <div><b class="mini-bus light" th:text="${route.secondRoute}">93</b><p><strong>Martin Opposite Leona</strong><span th:text="${option.second.board.source}"></span></p><time th:text="${option.second.board.display()}"></time></div>
                             <div class="transfer"><span class="timeline-dot"></span><p><strong th:text="${destinationStopName}"></strong><span th:text="${option.second.alight.source}"></span></p><time th:text="${option.second.alight.display()}"></time></div>
                         </div>
-                        <div class="metrics"><div><strong th:text="${option.transferMargin + ' min'}"></strong><span>Transfer margin after walking</span></div><div><strong th:text="${option.arrivalMargin + ' min'}"></strong><span>Before your deadline</span></div></div>
-                        <div class="option-footer"><span th:text="${option.dataLabel()}"></span></div>
+                        <div class="metrics"><div><strong th:text="${option.transferMargin + ' min'}"></strong><span>Transfer margin after walking</span></div><div th:if="${option.hasDeadline}"><strong th:text="${option.arrivalMargin + ' min'}"></strong><span>Before your deadline</span></div></div>
                         <div class="backup" th:if="${option.backup != null}" th:classappend="${option.backup.onTime() ? '' : 'late'}">
-                            <strong>If you miss this 93</strong>
-                            <p>Next matching 93: <b th:text="${option.backup.departureDisplay()}"></b> · <span th:text="${option.backup.minutesLater + ' min later'}"></span></p>
+                            <strong th:text="${'If you miss this ' + route.secondRoute}"></strong>
+                            <p><span th:text="${'Next matching ' + route.secondRoute + ':'}"></span> <b th:text="${option.backup.departureDisplay()}"></b> · <span th:text="${option.backup.minutesLater + ' min later'}"></span></p>
                             <p>At your destination, including the walk: <b th:text="${option.backup.workDisplay()}"></b></p>
                             <p class="backup-deadline" th:text="${option.backup.deadlineLabel()}"></p>
                             <small th:text="${option.backup.dataLabel()}"></small>
                         </div>
-                        <p class="small-note" th:if="${option.backup == null}">No later matching 93 found in the service days checked. No backup arrival is available.</p>
+                        <p class="small-note" th:if="${option.backup == null}">No later matching second bus found in the service days checked. No backup arrival is available.</p>
+                        </details>
                     </article>
+                    <a href="#edit-commute" data-edit-commute class="edit-shortcut">Edit stops, walks &amp; buffers ↓</a>
                     <div th:unless="${#lists.isEmpty(result.options)}"><label class="refresh-toggle"><input id="auto-refresh" type="checkbox"> Refresh this plan every 30 seconds</label><p class="small-note">Updates while this page is open. A buffer is a planning rule, not a guarantee of making the trip. “Boarding proxy” uses a predicted arrival because VIA did not supply a departure estimate.</p></div>
-                    <div class="walking-links"><span>Check the walks in Google Maps</span><a th:href="${homeMap}" target="_blank" rel="noopener noreferrer">Home → first stop ↗</a><a th:href="${transferMap}" target="_blank" rel="noopener noreferrer">Transfer walk ↗</a><a th:href="${workMap}" target="_blank" rel="noopener noreferrer">Last stop → destination ↗</a></div>
+                    <div class="walking-links"><span>Check the walks in Google Maps</span><a th:href="${homeMap}" target="_blank" rel="noopener noreferrer">Start → first stop ↗</a><a th:href="${transferMap}" target="_blank" rel="noopener noreferrer">Transfer walk ↗</a><a th:href="${workMap}" target="_blank" rel="noopener noreferrer">Last stop → destination ↗</a></div>
                 </div>
             </section>
-            <section class="panel service-alerts" aria-labelledby="alerts-title">
-                <p class="eyebrow">BEFORE YOU TRAVEL</p><h2 id="alerts-title">Service advisories</h2>
+            <details class="panel service-alerts" th:open="${not #lists.isEmpty(alerts)}"><summary id="alerts-title">Service advisories <span th:text="${#lists.size(alerts)}"></span></summary>
+                
                 <p class="field-note" th:text="${alertStatus}"></p>
                 <p class="small-note" th:if="${alertsConfirmed and #lists.isEmpty(alerts)}">No matching advisories in the downloaded feed for the selected journey or route/date. This does not guarantee disruption-free service.</p>
                 <p class="advisory-warning" th:unless="${#lists.isEmpty(alerts)}">These advisories may affect the displayed options or backup buses. Check the notice before relying on the times; routes are not automatically rerouted around closures.</p>
                 <article class="advisory" th:each="alert : ${alerts}"><span class="badge" th:text="${alert.effect}"></span><h3 th:text="${alert.title}"></h3><p th:text="${alert.description}"></p><a th:if="${alert.url != null}" th:href="${alert.url}" target="_blank" rel="noopener noreferrer">Read the service notice ↗</a></article>
                 <p class="small-note">Alert feed timestamp: <span th:text="${alertUpdated}"></span></p>
-            </section>
-            <section class="panel live-board" aria-labelledby="live-title">
-                <div class="live-heading"><div><p class="eyebrow">AT YOUR STOPS, RIGHT NOW</p><h2 id="live-title">The next buses</h2></div><span class="feed-badge" th:classappend="${feedFresh ? 'fresh' : ''}" th:text="${feedFresh ? 'FEED CONNECTED' : 'SCHEDULE MODE'}"></span></div>
-                <p class="board-context">Next two hours · your selected 24 boarding stop and the downtown 93 transfer</p>
+            </details>
+            <details class="panel live-board"><summary id="live-title">Next buses at your stops</summary>
+                <div class="live-heading"><div><p class="eyebrow">AT YOUR STOPS, RIGHT NOW</p><h2>The next buses</h2></div><span class="feed-badge" th:classappend="${feedFresh ? 'fresh' : ''}" th:text="${feedFresh ? 'FEED CONNECTED' : 'SCHEDULE MODE'}"></span></div>
+                <p class="board-context">Next two hours · your first boarding stop and the downtown transfer</p>
                 <div class="board-row" th:each="bus : ${board}"><b class="mini-bus" th:text="${bus.route}"></b><div><strong th:text="${bus.stop}"></strong><span th:text="${bus.event.source}"></span></div><time th:text="${bus.event.display()}"></time></div>
                 <p class="field-note" th:if="${#lists.isEmpty(board)}">No upcoming buses found for these stops in the next two hours. Check the data status below.</p>
-                <details class="data-details"><summary>Data status · checked <span th:text="${checkedAt}"></span></summary><p th:text="${scheduleStatus}"></p><p th:text="${liveStatus}"></p><p>Feed timestamp: <span th:text="${feedUpdated}"></span></p><p>Estimates older than 2 minutes fall back to scheduled times. Missing stop updates also fall back to the schedule. A connected feed does not mean every bus has a live estimate.</p><a href="https://www.viainfo.net/developers-resources/" target="_blank" rel="noopener noreferrer">VIA developer data ↗</a></details>
-            </section>
+                <details class="data-details"><summary>Data status · checked <span th:text="${checkedAt}"></span></summary><p th:text="${scheduleStatus}"></p><p th:text="${liveStatus}"></p><p>Feed timestamp: <span th:text="${feedUpdated}"></span></p><p>Estimates older than 2 minutes fall back to scheduled times. Fresh delays carry forward through omitted stops until another update or NO_DATA. Events without usable predictions fall back to the schedule. A connected feed does not mean every bus has a live estimate.</p><a href="https://www.viainfo.net/developers-resources/" target="_blank" rel="noopener noreferrer">VIA developer data ↗</a></details>
+            </details>
         </div>
+    <section id="live-map-panel" class="panel live-map-panel" aria-labelledby="map-title"
+        th:attr="data-corridor=${route.key},data-token=${planToken},data-active=${journey != null},data-origin-stop=${commute.originStop},data-destination-stop=${commute.destinationStop},data-origin-lat=${commute.originLat},data-origin-lon=${commute.originLon},data-destination-lat=${commute.destinationLat},data-destination-lon=${commute.destinationLon},data-tile-url=${mapTileUrl},data-tile-credit=${mapTileCredit}">
+        <div class="map-heading"><div><p class="eyebrow">LIVE MAP &amp; COUNTDOWNS</p><h2 id="map-title">Your route at a glance</h2></div><button id="map-refresh" class="lookup-button" type="button">Refresh buses</button></div>
+        <details id="map-details" th:open="${not hasJourneyContent}"><summary>View map &amp; bus countdowns</summary>
+        <p id="map-plan-status" class="small-note" role="status">Plan your commute to see departure countdowns.</p>
+        <div id="map-countdowns" class="map-countdowns" aria-label="Commute countdowns"></div>
+        <p id="map-walk-note" class="small-note"></p>
+        <div class="map-controls"><button id="map-find-me" class="lookup-button" type="button">Find me</button><button id="map-stop-location" class="lookup-button" type="button" hidden>Stop locating me</button><button id="map-fit" class="lookup-button" type="button">Show my stops</button>
+            <button th:if="${journey == null}" id="map-use-location" class="lookup-button" type="button" disabled>Use my location as start</button></div>
+        <p id="map-location-status" class="small-note" role="status">Find me shows your current location. Use Set on map beside an address to choose an entrance.</p>
+        <div th:if="${journey == null}" id="map-pin-confirm" hidden><p id="map-pin-instructions" class="small-note" role="status"></p><button id="map-save-pin" class="lookup-button" type="button">Use this point</button><button id="map-cancel-pin" class="lookup-button" type="button">Cancel</button></div>
+        <div class="commute-map-wrap"><div id="commute-map" tabindex="0" aria-label="Interactive map of your commute"></div><div id="map-crosshair" aria-hidden="true" hidden>+</div></div>
+        <p id="map-tile-status" class="small-note" role="status"></p>
+        <div th:if="${journey == null}" class="pin-controls"><button class="lookup-button" type="button" data-map-pin="origin">Pin starting point</button><button class="lookup-button" type="button" data-map-pin="destination">Pin destination</button>
+        </div>
+        <p id="map-feed-status" class="small-note" role="status">Loading vehicle reports…</p>
+        <details class="map-extras"><summary>Map legend, updates &amp; privacy</summary><p class="map-legend"><span>🔵 You (accuracy circle)</span><span>● Stops</span><span>24 / 93 Bus reports</span><span>★ Selected trip</span><span>Gray = unconfirmed</span></p>
+        <details class="map-bus-details"><summary>Bus reports and times</summary><ul id="map-bus-list"></ul></details>
+        <label class="refresh-toggle"><input id="map-auto-refresh" type="checkbox" checked> Refresh buses and estimates every 30 seconds</label>
+        <p class="privacy-note">Location is used while this page is visible; no location history is recorded. Using a point fills your commute form. Map tiles share the viewed area and your IP address with the map provider. No background tracking or notifications. <a href="https://www.openstreetmap.org/fixthemap" target="_blank" rel="noopener noreferrer">Report a map issue</a></p></details>
+        </details>
+        <noscript><p class="field-note">The map and countdowns need JavaScript. Your timetable and manual stop settings still work below.</p></noscript>
+    </section>
     </div>
-    <footer><strong>just in transit.</strong><div><span>Data provided by VIA Metropolitan Transit. Independent project; not affiliated with VIA.</span><br><span>Address and walking data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap contributors</a> · search by Photon · walking routes by Valhalla.</span></div></footer>
+    <section class="panel offline-settings"><h2>Offline trip card</h2><label class="refresh-toggle"><input id="keep-offline" type="checkbox"> Keep an offline card on this device</label><p class="small-note">Saves this trip’s public stop names, steps and last estimates in this browser for up to 18 hours. Anyone using this browser can read it. No home/work addresses, map points or location trail are included. HTTPS or localhost is required.</p><p id="offline-status" class="field-note" role="status"></p><a href="/offline.html">Open saved trip card</a></section>
+    <footer><strong>just in transit.</strong><div><span>Data provided by VIA Metropolitan Transit. Independent project; not affiliated with VIA.</span><br><span>Address and walking data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap contributors</a> · address ranges by U.S. Census · place search by Photon · walking routes by Valhalla.</span></div></footer>
 </main>
 </body>
 </html>

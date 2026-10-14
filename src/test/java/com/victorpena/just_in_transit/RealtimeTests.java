@@ -57,4 +57,20 @@ class RealtimeTests {
         var bytes=FeedMessage.newBuilder().setHeader(FeedHeader.newBuilder().setGtfsRealtimeVersion("2.0").setIncrementality(FeedHeader.Incrementality.DIFFERENTIAL)).build().toByteArray();
         assertThrows(IOException.class,()->RealtimeStore.Snapshot.parse(bytes));
     }
+    @Test void protobufArrivalOnlyDelayReachesOmittedDownstreamStop() throws Exception {
+        var live=snapshot(update().addStopTimeUpdate(prediction()),0);
+        var a=schedule("07:55:00").trips().get(0);
+        var downstream=live.event(a,DAY,a.stops().get(1),false,NOW);
+        assertEquals("7:49 AM",downstream.display());assertTrue(downstream.live());
+        assertTrue(downstream.source().contains("carried"));
+    }
+    @Test void protobufNoDataStopsDownstreamPropagation() throws Exception {
+        var live=snapshot(update().addStopTimeUpdate(prediction()).addStopTimeUpdate(
+            TripUpdate.StopTimeUpdate.newBuilder().setStopSequence(2)
+                .setScheduleRelationship(TripUpdate.StopTimeUpdate.ScheduleRelationship.NO_DATA)),0);
+        var a=schedule("07:55:00").trips().get(0);
+        var downstream=live.event(a,DAY,a.stops().get(1),false,NOW);
+        assertEquals("7:45 AM",downstream.display());assertFalse(downstream.live());
+    }
+
 }

@@ -8,9 +8,12 @@ import java.util.*;
 public final class CorridorStops {
     private CorridorStops() { }
     public static List<Stop> eligible(Schedule schedule,String kind,LocalDate date) {
+        return eligible(schedule,kind,date,Corridor.of("work"));
+    }
+    public static List<Stop> eligible(Schedule schedule,String kind,LocalDate date,Corridor corridor) {
         if(schedule==null)return List.of();
         boolean origin="origin".equals(kind);
-        String route=origin?"24":"93", transfer=origin?"76779":"76773";
+        String route=origin?corridor.firstRoute():corridor.secondRoute(), transfer=origin?corridor.transferOff():corridor.transferOn();
         Set<String> ids=new HashSet<>();
         for(Trip trip:schedule.trips()) {
             boolean active=schedule.active(trip.service(),date) || schedule.active(trip.service(),date.minusDays(1))
@@ -30,10 +33,33 @@ public final class CorridorStops {
             .sorted(Comparator.comparing(Stop::name).thenComparing(Stop::id)).toList();
     }
     public static List<Nearby> nearby(Schedule schedule,String kind,LocalDate date,double lat,double lon) {
-        return eligible(schedule,kind,date).stream().map(s->new Nearby(s.id(),s.name(),s.lat(),s.lon(),
+        return nearby(schedule,kind,date,lat,lon,Corridor.of("work"));
+    }
+    public static List<Nearby> nearby(Schedule schedule,String kind,LocalDate date,double lat,double lon,Corridor corridor) {
+        return eligible(schedule,kind,date,corridor).stream().map(s->new Nearby(s.id(),s.name(),s.lat(),s.lon(),
                 Math.round(meters(lat,lon,s.lat(),s.lon()))))
-            .filter(s->s.straightLineMeters()<=2000).sorted(Comparator.comparingLong(Nearby::straightLineMeters))
-            .limit(5).toList();
+            .filter(s->meters(lat,lon,s.lat(),s.lon())<=2000)
+            .sorted(Comparator.comparingLong(Nearby::straightLineMeters).thenComparing(Nearby::id)).toList();
+    }
+    /** Search the agency's actual stop names, while keeping date/direction/pickup restrictions. */
+    public static List<Stop> search(Schedule schedule,String kind,LocalDate date,String query) {
+        return search(schedule,kind,date,query,Corridor.of("work"));
+    }
+    public static List<Stop> search(Schedule schedule,String kind,LocalDate date,String query,Corridor corridor) {
+        String normalized=normalize(query);
+        if(normalized.isBlank())return List.of();
+        List<String> words=Arrays.stream(normalized.split(" "))
+            .filter(w->!Set.of("and","at","st","street","n","s","e","w","north","south","east","west").contains(w)).toList();
+        if(words.isEmpty())return List.of();
+        return eligible(schedule,kind,date,corridor).stream().filter(stop-> {
+            if(stop.id().equalsIgnoreCase(query.strip()))return true;
+            String name=normalize(stop.name());
+            return words.stream().allMatch(name::contains);
+        }).toList();
+    }
+    private static String normalize(String text) {
+        return java.text.Normalizer.normalize(text,java.text.Normalizer.Form.NFD)
+            .replaceAll("\\p{M}","").toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]+"," ").strip();
     }
     public static double meters(double a,double b,double c,double d) {
         double lat=Math.toRadians(c-a),lon=Math.toRadians(d-b);

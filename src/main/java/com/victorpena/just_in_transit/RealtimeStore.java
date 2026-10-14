@@ -33,60 +33,29 @@ public class RealtimeStore {
         return snapshot;
     }
     public String message() { return message; }
-    public record Snapshot(Instant timestamp,Map<String,List<TripUpdate>> trips) {
+    public static final class Snapshot extends LiveSnapshot {
+        public Snapshot(Instant timestamp,Map<String,List<TripPrediction>> trips) { super(timestamp,trips); }
         public static Snapshot empty() { return new Snapshot(Instant.EPOCH,Map.of()); }
         public static Snapshot parse(byte[] bytes) throws IOException {
             FeedMessage feed=FeedMessage.parseFrom(bytes);
             if(feed.getHeader().getIncrementality()==FeedHeader.Incrementality.DIFFERENTIAL)
                 throw new IOException("Differential feeds are not supported");
-            Map<String,List<TripUpdate>> trips=new HashMap<>();
+            Map<String,List<TripPrediction>> trips=new HashMap<>();
             for(var entity:feed.getEntityList())if(!entity.getIsDeleted() && entity.hasTripUpdate()) {
-                var update=entity.getTripUpdate();
-                trips.computeIfAbsent(update.getTrip().getTripId(),key->new ArrayList<>()).add(update);
+                var u=entity.getTripUpdate();var descriptor=u.getTrip();
+                var stops=u.getStopTimeUpdateList().stream().map(s->new StopPrediction(
+                    s.hasStopSequence()?s.getStopSequence():null,s.getStopId(),s.getScheduleRelationship().name(),
+                    s.hasArrival()?prediction(s.getArrival()):null,s.hasDeparture()?prediction(s.getDeparture()):null)).toList();
+                var trip=new TripPrediction(descriptor.hasStartDate()?descriptor.getStartDate():null,
+                    descriptor.getScheduleRelationship().name(),u.hasTimestamp()?Instant.ofEpochSecond(u.getTimestamp()):null,
+                    u.hasDelay()?(long)u.getDelay():null,stops);
+                trips.computeIfAbsent(descriptor.getTripId(),key->new ArrayList<>()).add(trip);
             }
             return new Snapshot(Instant.ofEpochSecond(feed.getHeader().getTimestamp()),trips);
         }
-        public boolean fresh(Instant now) { return recent(timestamp,now); }
-        private static boolean recent(Instant stamp,Instant now) {
-            long age=Duration.between(stamp,now).getSeconds();return age>=-30 && age<=120;
-        }
-        public String updatedDisplay() {
-            return timestamp.equals(Instant.EPOCH)?"No live snapshot":DateTimeFormatter.ofPattern("MMM d, h:mm:ss a z").withZone(ZONE).format(timestamp);
-        }
-        public Event event(Trip trip,LocalDate day,StopTime stop,boolean boarding,Instant now) {
-            Instant scheduled=serviceTime(day,boarding?stop.departure():stop.arrival());
-            Event fallback=new Event(scheduled,"Scheduled",false,true);
-            if(!fresh(now))return fallback;
-            String serviceDate=day.format(DateTimeFormatter.BASIC_ISO_DATE);
-            TripUpdate update=trips.getOrDefault(trip.id(),List.of()).stream().filter(u->
-                u.getTrip().hasStartDate()?u.getTrip().getStartDate().equals(serviceDate):day.equals(timestamp.atZone(ZONE).toLocalDate())
-            ).findFirst().orElse(null);
-            if(update==null)return fallback;
-            // Never use an old trip estimate merely because the enclosing feed is new.
-            if(update.hasTimestamp() && !recent(Instant.ofEpochSecond(update.getTimestamp()),now))return fallback;
-            String relationship=update.getTrip().getScheduleRelationship().name();
-            if(!relationship.equals("SCHEDULED"))return new Event(scheduled,"Trip unavailable",false,false);
-            for(var s:update.getStopTimeUpdateList()) {
-                boolean match=s.hasStopSequence()?s.getStopSequence()==stop.sequence():s.getStopId().equals(stop.id());
-                if(!match)continue;
-                if(s.getScheduleRelationship()==TripUpdate.StopTimeUpdate.ScheduleRelationship.SKIPPED)
-                    return new Event(scheduled,"Stop skipped",false,false);
-                if(s.getScheduleRelationship()==TripUpdate.StopTimeUpdate.ScheduleRelationship.NO_DATA)return fallback;
-                TripUpdate.StopTimeEvent event=null;
-                String source="Live estimate";
-                if(boarding && s.hasDeparture())event=s.getDeparture();
-                else if(s.hasArrival()) {
-                    event=s.getArrival();
-                    if(boarding) { source="Live arrival · boarding proxy";scheduled=serviceTime(day,stop.arrival()); }
-                }
-                if(event==null)return fallback;
-                Instant predicted=event.hasTime()?Instant.ofEpochSecond(event.getTime()):event.hasDelay()?scheduled.plusSeconds(event.getDelay()):null;
-                // A mismatched service day must not become a spurious live recommendation.
-                if(predicted==null || Math.abs(Duration.between(scheduled,predicted).toHours())>6)return fallback;
-                return new Event(predicted,source,true,true);
-            }
-            // This prototype deliberately does not propagate one stop's delay to other stops.
-            return fallback;
+        private static Prediction prediction(TripUpdate.StopTimeEvent event) {
+            return new Prediction(event.hasTime()?Instant.ofEpochSecond(event.getTime()):null,
+                event.hasDelay()?(long)event.getDelay():null,event.hasUncertainty()?event.getUncertainty():null);
         }
     }
 }

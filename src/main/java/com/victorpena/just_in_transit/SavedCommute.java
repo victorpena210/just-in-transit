@@ -12,12 +12,13 @@ public class SavedCommute {
     public int walkToStop, transferWalk, walkToWork, boardingBuffer, transferBuffer, arrivalBuffer;
     public String destinationStop;
     public String originStop, locationMode;
+    public String corridor,planMode;
     public Double originLat, originLon, destinationLat, destinationLon;
     @Column(length=200) public String resolvedOrigin;
     @Column(length=200) public String resolvedDestination;
     public SavedCommute() { }
     public static SavedCommute from(CommuteForm f) {
-        var s = new SavedCommute();
+        var s = new SavedCommute();s.id=f.route().savedId();s.corridor=f.corridor();s.planMode=f.planMode();
         s.origin=f.origin(); s.destination=f.destination(); s.arriveBy=f.arriveBy();
         s.walkToStop=f.walkToStop(); s.transferWalk=f.transferWalk(); s.walkToWork=f.walkToWork();
         s.boardingBuffer=f.boardingBuffer(); s.transferBuffer=f.transferBuffer(); s.arrivalBuffer=f.arrivalBuffer();
@@ -28,6 +29,6 @@ public class SavedCommute {
     public CommuteForm form(LocalDate date) {
         return new CommuteForm(origin,destination,date,arriveBy,walkToStop,transferWalk,walkToWork,
                 boardingBuffer,transferBuffer,arrivalBuffer,destinationStop,originStop,locationMode,
-                originLat,originLon,destinationLat,destinationLon,resolvedOrigin,resolvedDestination);
+                originLat,originLon,destinationLat,destinationLon,resolvedOrigin,resolvedDestination,corridor,planMode,"home","");
     }
 }

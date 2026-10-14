@@ -99,9 +99,9 @@ public class AlertStore {
         List<Context> out=new ArrayList<>();
         if(result!=null && !result.options().isEmpty()) {
             for(Option option:result.options()) {
-                out.add(context(schedule,option.first(),form.originStop(),"76779"));
-                out.add(context(schedule,option.second(),"76773",form.destinationStop()));
-                if(option.backup()!=null)out.add(context(schedule,option.backup().leg(),"76773",form.destinationStop()));
+                out.add(context(schedule,option.first(),form.originStop(),form.route().transferOff()));
+                out.add(context(schedule,option.second(),form.route().transferOn(),form.destinationStop()));
+                if(option.backup()!=null)out.add(context(schedule,option.backup().leg(),form.route().transferOn(),form.destinationStop()));
             }
         }else {
             LocalDate day=form.date()==null?now.atZone(ZONE).toLocalDate():form.date();
@@ -109,15 +109,19 @@ public class AlertStore {
             for(String route:List.of("24","93")) {
                 var info=schedule.routes().getOrDefault(route,new RouteInfo("",3));
                 Set<String> stops=new HashSet<>();
-                String selected=route.equals("24")?form.originStop():form.destinationStop();if(selected!=null)stops.add(selected);
-                stops.add(route.equals("24")?"76779":"76773");
+                String selected=route.equals(form.route().firstRoute())?form.originStop():form.destinationStop();if(selected!=null)stops.add(selected);
+                stops.add(route.equals(form.route().firstRoute())?form.route().transferOff():form.route().transferOn());
                 out.add(new Context(route,"","",day.format(DateTimeFormatter.BASIC_ISO_DATE),"",info.agency(),info.type(),stops,from,to));
             }
         }
         return out;
     }
     private static Context context(Schedule schedule,Leg leg,String start,String end) {
-        Trip trip=schedule.trips().stream().filter(t->t.id().equals(leg.tripId())).findFirst().orElseThrow();
+        Trip trip=schedule.trips().stream().filter(t->t.id().equals(leg.tripId())).findFirst().orElse(null);
+        if(trip==null) {
+            var info=schedule.routes().getOrDefault(leg.route(),new RouteInfo("",3));
+            return new Context(leg.route(),leg.tripId(),"",leg.serviceDate().format(DateTimeFormatter.BASIC_ISO_DATE),"",info.agency(),info.type(),Set.of(start,end),leg.board().at(),leg.alight().at());
+        }
         Set<String> stops=new HashSet<>();boolean collecting=false;
         for(StopTime stop:trip.stops()) {
             if(stop.id().equals(start))collecting=true;

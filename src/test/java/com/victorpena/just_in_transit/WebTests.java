@@ -25,7 +25,7 @@ class WebTests {
             .param("transferBuffer","5").param("arrivalBuffer","5").param("destinationStop","83463");
     }
     @Test void rendersHomepageAndProtectedForm() throws Exception {
-        mvc.perform(get("/")).andExpect(status().isOk()).andExpect(content().string(containsString("Set your commute")))
+        mvc.perform(get("/")).andExpect(status().isOk()).andExpect(content().string(containsString("Where are you going?")))
             .andExpect(content().string(containsString("name=\"_csrf\"")));
     }
     @Test void invalidWalkingTimesDoNotSave() throws Exception {

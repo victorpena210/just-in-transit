@@ -1,0 +1,10 @@
+<!doctype html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Sign in · Just in Transit</title><link rel="stylesheet" th:href="@{/app.css}"></head>
+<body><main class="login-wrap"><a class="brand" href="/">just in <strong>transit.</strong></a><section class="panel">
+<h1>Welcome back.</h1><p>Your private commute planner.</p>
+<p class="errors" role="alert" th:if="${param.error}">Sign-in failed. Check your username and password.</p>
+<p class="notice" th:if="${param.logout}">You’ve signed out.</p>
+<form th:action="@{/login}" method="post"><label for="username">Username</label><input id="username" name="username" autocomplete="username" required autofocus>
+<label for="password">Password</label><input id="password" type="password" name="password" autocomplete="current-password" required>
+<button class="primary" type="submit">Sign in</button></form></section></main></body></html>

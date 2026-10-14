@@ -36,24 +36,52 @@ public final class TransitModels {
     public record RouteInfo(String agency,int type) { }
     public record Event(Instant at, String source, boolean live, boolean usable) {
         public String display() { return time(at); }
+        public boolean directPrediction() { return live && usable && source.equals("Live estimate"); }
     }
     public record Leg(String route, String tripId, Event board, Event alight,LocalDate serviceDate) { }
     public record Option(Leg first, Leg second, Instant leaveHome, Instant atWork,
                          long transferMargin, long arrivalMargin, long transferWait,
-                         boolean meetsBuffers, String rating, Long nextBusMinutes, Backup backup) {
+                         boolean meetsBuffers, String rating, Long nextBusMinutes, Backup backup,boolean hasDeadline) {
+        public Option(Leg first,Leg second,Instant leaveHome,Instant atWork,long transferMargin,long arrivalMargin,long transferWait,
+            boolean meetsBuffers,String rating,Long nextBusMinutes,Backup backup) {
+            this(first,second,leaveHome,atWork,transferMargin,arrivalMargin,transferWait,meetsBuffers,rating,nextBusMinutes,backup,true);
+        }
+        public String deadlineLabel() { return !hasDeadline?"No arrival deadline set":arrivalMargin<0?(-arrivalMargin)+" min late":arrivalMargin==0?"At your deadline":arrivalMargin+" min before your deadline"; }
+        public String backupSummary() { return backup==null?"No later matching "+second.route()+" found in the checked service days.":
+            "If you miss this "+second.route()+": estimated arrival "+backup.workDisplay()+" · "+backup.deadlineLabel()+"."; }
+        public String comparisonLabel(Option best) {
+            if(equals(best))return !hasDeadline?"Earliest arrival":arrivalMargin<0?"Earliest remaining arrival":"Recommended";
+            if(arrivalMargin<0)return "Later arrival";
+            if(leaveHome.isAfter(best.leaveHome))return "Leave later";
+            if(leaveHome.isBefore(best.leaveHome) && (transferMargin>best.transferMargin || arrivalMargin>best.arrivalMargin))return "More breathing room";
+            return "Earlier departure";
+        }
+        public String comparisonDetail(Option best) {
+            if(equals(best))return meetsBuffers?"Meets your requested walking times and buffers.":arrivalMargin<0?"Earliest arrival on your saved route; your deadline stays unchanged.":"Fits your deadline with less room than requested.";
+            long difference=Duration.between(best.leaveHome,leaveHome).toMinutes();
+            return (difference>0?difference+" min longer at home":(-difference)+" min earlier departure")+" · "+transferMargin+" min after the transfer walk · "+deadlineLabel()+".";
+        }
         public String leaveDisplay() { return time(leaveHome); }
         public String workDisplay() { return time(atWork); }
         public String dataLabel() {
             long count=List.of(first.board(),first.alight(),second.board(),second.alight()).stream().filter(Event::live).count();
             return count==4 ? "Live estimates" : count==0 ? "Scheduled times" : "Live + scheduled times";
         }
-        public String qualityClass() { return meetsBuffers ? "comfortable" : "tight"; }
+        public boolean connectionConfirmed() { return first.alight().directPrediction() && second.board().directPrediction(); }
+        public String displayRating() { return meetsBuffers && !connectionConfirmed()?"Buffers met · estimated":rating; }
+        public String confidenceWarning() {
+            return connectionConfirmed()?"Live transfer estimates are available; they can still change.":
+                "Connection unconfirmed: transfer timing includes scheduled, carried-forward, proxy, or uncertain estimates. Missing live data does not mean the bus is on time.";
+        }
+        public String qualityClass() { return !meetsBuffers?"tight":connectionConfirmed()?"comfortable":"uncertain"; }
     }
-    public record Backup(Leg leg,Instant atWork,long minutesLater,long arrivalSeconds) {
+    public record Backup(Leg leg,Instant atWork,long minutesLater,long arrivalSeconds,boolean hasDeadline) {
+        public Backup(Leg leg,Instant atWork,long minutesLater,long arrivalSeconds) { this(leg,atWork,minutesLater,arrivalSeconds,true); }
         public String departureDisplay() { return leg.board().display(); }
         public String workDisplay() { return time(atWork); }
-        public boolean onTime() { return arrivalSeconds>=0; }
+        public boolean onTime() { return !hasDeadline || arrivalSeconds>=0; }
         public String deadlineLabel() {
+            if(!hasDeadline)return "No arrival deadline set";
             if(arrivalSeconds<0)return (long)Math.ceil(-arrivalSeconds/60.0)+" min late";
             if(arrivalSeconds<60)return "At your deadline";
             return arrivalSeconds/60+" min before your deadline";
@@ -62,5 +90,5 @@ public final class TransitModels {
             leg.board().live()||leg.alight().live()?"Live + scheduled times":"Scheduled times"; }
     }
     public record BoardRow(String route,String stop,Event event,String tripId) { }
-    public record Result(List<Option> options,String message) { }
+    public record Result(List<Option> options,String message) { public boolean lateFallback() { return !options.isEmpty() && options.get(0).arrivalMargin()<0; } }
 }

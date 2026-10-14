@@ -17,27 +17,32 @@ public class MapController {
     private final ScheduleStore schedules;
     public MapController(MapService maps,ScheduleStore schedules) { this.maps=maps;this.schedules=schedules; }
     public record Search(@NotBlank @Size(min=3,max=200) String query) { }
+    public record StopSearch(@NotBlank @Pattern(regexp="origin|destination") String kind,
+        @NotNull LocalDate date,@NotBlank @Size(min=2,max=100) String query,@Pattern(regexp="work|home") String corridor) { }
     public record Location(@NotBlank @Pattern(regexp="origin|destination") String kind,
         @NotNull @DecimalMin("29.1") @DecimalMax("29.9") Double lat,
-        @NotNull @DecimalMin("-99.1") @DecimalMax("-98.0") Double lon,@NotNull LocalDate date) { }
+        @NotNull @DecimalMin("-99.1") @DecimalMax("-98.0") Double lon,@NotNull LocalDate date,@Pattern(regexp="work|home") String corridor) { }
     public record WalkRequest(@NotBlank @Pattern(regexp="origin|destination|transfer") String kind,
         @NotNull @DecimalMin("29.1") @DecimalMax("29.9") Double lat,
         @NotNull @DecimalMin("-99.1") @DecimalMax("-98.0") Double lon,
-        @NotBlank @Size(max=64) String stopId,@NotNull LocalDate date) { }
+        @NotBlank @Size(max=64) String stopId,@NotNull LocalDate date,@Pattern(regexp="work|home") String corridor) { }
     @PostMapping("/search") public List<MapService.Place> search(@Valid @RequestBody Search query) throws IOException,InterruptedException {
         return maps.search(query.query());
     }
     @PostMapping("/stops") public List<CorridorStops.Nearby> stops(@Valid @RequestBody Location point) {
-        return CorridorStops.nearby(schedule(),point.kind(),point.date(),point.lat(),point.lon());
+        return CorridorStops.nearby(schedule(),point.kind(),point.date(),point.lat(),point.lon(),Corridor.of(point.corridor()));
+    }
+    @PostMapping("/stop-search") public List<Stop> searchStops(@Valid @RequestBody StopSearch query) {
+        return CorridorStops.search(schedule(),query.kind(),query.date(),query.query(),Corridor.of(query.corridor()));
     }
     @PostMapping("/walk") public MapService.Walk walk(@Valid @RequestBody WalkRequest request) throws IOException,InterruptedException {
-        Schedule schedule=schedule();
+        Schedule schedule=schedule();Corridor corridor=Corridor.of(request.corridor());
         if("transfer".equals(request.kind())) {
-            Stop a=schedule.stops().get("76779"),b=schedule.stops().get("76773");
+            Stop a=schedule.stops().get(corridor.transferOff()),b=schedule.stops().get(corridor.transferOn());
             if(a==null||b==null)throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,"Transfer stops unavailable.");
             return maps.walk(a.lat(),a.lon(),b.lat(),b.lon());
         }
-        Stop stop=CorridorStops.eligible(schedule,request.kind(),request.date()).stream()
+        Stop stop=CorridorStops.eligible(schedule,request.kind(),request.date(),corridor).stream()
             .filter(s->s.id().equals(request.stopId())).findFirst()
             .orElseThrow(()->new ResponseStatusException(HttpStatus.BAD_REQUEST,"Choose a stop serving the transfer on this date."));
         if(!MapService.inArea(request.lat(),request.lon()) || CorridorStops.meters(request.lat(),request.lon(),stop.lat(),stop.lon())>2000)

@@ -1,0 +1,37 @@
+package com.victorpena.just_in_transit;
+
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
+import static org.hamcrest.Matchers.containsString;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.mock.web.MockHttpSession;
+import org.springframework.test.web.servlet.MockMvc;
+
+@SpringBootTest(properties={"via.enabled=false","maps.enabled=false","jit.access.enabled=true","jit.access.username=victor",
+    "jit.access.password=test-only-long-password","spring.datasource.url=jdbc:h2:mem:protected-web;DB_CLOSE_DELAY=-1","spring.jpa.hibernate.ddl-auto=create-drop"})
+@AutoConfigureMockMvc
+class ProtectedAccessTests {
+    @Autowired MockMvc mvc;
+    @Test void privatePagesRequireLoginAndHttpRedirectsToHttps() throws Exception {
+        mvc.perform(get("/").secure(true)).andExpect(status().is3xxRedirection()).andExpect(redirectedUrlPattern("**/login"));
+        mvc.perform(get("/login")).andExpect(status().is3xxRedirection()).andExpect(redirectedUrlPattern("https://**"));
+        mvc.perform(get("/login").secure(true)).andExpect(status().isOk()).andExpect(content().string(containsString("Sign in")));
+    }
+    @Test void loginAllowsOwnerAndLogoutEndsSession() throws Exception {
+        var login=mvc.perform(post("/login").secure(true).with(csrf()).param("username","victor").param("password","test-only-long-password"))
+            .andExpect(redirectedUrl("/")).andReturn();
+        var session=(MockHttpSession)login.getRequest().getSession(false);
+        mvc.perform(get("/").session(session).secure(true)).andExpect(status().isOk());
+        mvc.perform(post("/logout").session(session).secure(true).with(csrf())).andExpect(redirectedUrl("/login?logout"));
+        mvc.perform(get("/").secure(true)).andExpect(status().is3xxRedirection());
+    }
+    @Test void mapRequestsStayPrivateAndMutationsRequireCsrf() throws Exception {
+        mvc.perform(post("/maps/search").secure(true).with(csrf()).contentType("application/json").content("{\"query\":\"San Antonio\"}"))
+            .andExpect(status().is3xxRedirection());
+        mvc.perform(post("/journey/action").secure(true)).andExpect(status().isForbidden());
+    }
+}
