@@ -6,6 +6,7 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.core.userdetails.*;
 import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.web.header.writers.StaticHeadersWriter;
 
 @Configuration
 public class SecurityConfig {
@@ -13,10 +14,18 @@ public class SecurityConfig {
         if(access.enabled()) {
             http.authorizeHttpRequests(r->r.requestMatchers("/login","/app.css","/offline.html","/offline.js","/sw.js","/error").permitAll().anyRequest().authenticated())
                 .formLogin(f->f.loginPage("/login").defaultSuccessUrl("/",true).permitAll())
-                .logout(l->l.logoutSuccessUrl("/login?logout").invalidateHttpSession(true).deleteCookies("JSESSIONID","JIT_JOURNEY"))
-                .redirectToHttps(org.springframework.security.config.Customizer.withDefaults());
+                .logout(l->l.logoutSuccessUrl("/login?logout").invalidateHttpSession(true).deleteCookies("JSESSIONID","JIT_JOURNEY"));
         } else {
             http.authorizeHttpRequests(r->r.anyRequest().permitAll()).formLogin(f->f.disable());
+            if(access.publicAccess()) {
+                http.logout(l->l.disable());
+                // A crawler hint, NOT an access control. Public visitors still have access.
+                http.headers(h->h.addHeaderWriter(new StaticHeadersWriter("X-Robots-Tag", "noindex, nofollow, noarchive")));
+            }
+        }
+        // Hosted public access still uses HTTPS; local loopback development stays on HTTP.
+        if(access.enabled() || access.publicAccess()) {
+            http.redirectToHttps(org.springframework.security.config.Customizer.withDefaults());
         }
         // CSRF and Spring's cache-control headers remain enabled, including map/journey actions.
         return http.httpBasic(b->b.disable()).requestCache(c->c.disable()).build();
