@@ -9,6 +9,8 @@ import org.springframework.web.context.annotation.SessionScope;
 @Component
 @SessionScope
 public class JourneySession {
+    // Keep the offered buses for the browser session; every preview and start refreshes their timing.
+    private static final long PLAN_LIFETIME_SECONDS=18*3600;
     private String choiceToken;
     private Instant plannedAt;
     private CommuteForm plannedForm;
@@ -18,10 +20,11 @@ public class JourneySession {
         choiceToken=UUID.randomUUID().toString();plannedAt=now;plannedForm=form;choices=List.copyOf(result.options());
         return choiceToken;
     }
+    public synchronized void remember(CommuteForm form) { plannedForm=form; }
     public synchronized CommuteForm lastForm() { return plannedForm; }
     public record MapChoice(CommuteForm form,Option option) { }
     public synchronized MapChoice mapChoice(String token,int index,Instant now) {
-        if(token==null || !Objects.equals(choiceToken,token) || plannedAt==null || now.isAfter(plannedAt.plusSeconds(1200))
+        if(token==null || !Objects.equals(choiceToken,token) || plannedAt==null || now.isAfter(plannedAt.plusSeconds(PLAN_LIFETIME_SECONDS))
             || index<0 || index>=choices.size())return null;
         return new MapChoice(plannedForm,choices.get(index));
     }
@@ -34,7 +37,7 @@ public class JourneySession {
     }
     public synchronized void start(String token,int index,Schedule schedule,LiveSnapshot live,Instant now,boolean keepHistory) {
         if(current(now)!=null)throw new IllegalArgumentException("A commute is already active. Finish or end it before starting another.");
-        if(!Objects.equals(choiceToken,token) || plannedAt==null || now.isAfter(plannedAt.plusSeconds(1200)) || index<0 || index>=choices.size())
+        if(!Objects.equals(choiceToken,token) || plannedAt==null || now.isAfter(plannedAt.plusSeconds(PLAN_LIFETIME_SECONDS)) || index<0 || index>=choices.size())
             throw new IllegalArgumentException("That departure plan has expired. Find your departure again.");
         active=ActiveJourney.start(plannedForm,choices.get(index),schedule,live,now,keepHistory);
         choices=List.of();choiceToken=null;

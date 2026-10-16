@@ -52,7 +52,7 @@ public class ScheduleStore {
     public String message() { return message; }
     public static Schedule parse(byte[] bytes) throws IOException {
         Map<String,byte[]> files=new HashMap<>();
-        Set<String> wanted=Set.of("stops.txt","trips.txt","stop_times.txt","calendar.txt","calendar_dates.txt","routes.txt","agency.txt");
+        Set<String> wanted=Set.of("stops.txt","trips.txt","stop_times.txt","calendar.txt","calendar_dates.txt","routes.txt","agency.txt","transfers.txt");
         try(var zip=new ZipInputStream(new ByteArrayInputStream(bytes))) {
             ZipEntry entry;
             while((entry=zip.getNextEntry())!=null) {
@@ -79,7 +79,7 @@ public class ScheduleStore {
                     Double.parseDouble(r.get("stop_lat")),Double.parseDouble(r.get("stop_lon"))));
         }
         try(var csv=csv(files.get("trips.txt"))) {
-            for(var r:csv)if(Set.of("24","93").contains(r.get("route_id")))trips.put(r.get("trip_id"),
+            for(var r:csv)trips.put(r.get("trip_id"),
                     new Trip(r.get("trip_id"),r.get("route_id"),r.get("service_id"),get(r,"trip_headsign",""),new ArrayList<>(),get(r,"direction_id","")));
         }
         try(var csv=csv(files.get("stop_times.txt"))) {
@@ -102,8 +102,13 @@ public class ScheduleStore {
         if(files.containsKey("calendar_dates.txt"))try(var csv=csv(files.get("calendar_dates.txt"))) {
             for(var r:csv)exceptions.computeIfAbsent(r.get("service_id"),k->new HashMap<>()).put(date(r.get("date")),r.get("exception_type").equals("1"));
         }
+        List<Transfer> transfers=new ArrayList<>();
+        if(files.containsKey("transfers.txt"))try(var csv=csv(files.get("transfers.txt"))) {
+            for(var row:csv)transfers.add(new Transfer(row.get("from_stop_id"),row.get("to_stop_id"),Integer.parseInt(get(row,"transfer_type","0")),
+                Integer.parseInt(get(row,"min_transfer_time","0")),get(row,"from_route_id",""),get(row,"to_route_id",""),get(row,"from_trip_id",""),get(row,"to_trip_id","")));
+        }
         if(trips.isEmpty() || services.isEmpty() && exceptions.isEmpty())throw new IOException("Missing route/service data");
-        return new Schedule(Map.copyOf(stops),List.copyOf(trips.values()),Map.copyOf(services),Map.copyOf(exceptions),Map.copyOf(routes));
+        return new Schedule(Map.copyOf(stops),List.copyOf(trips.values()),Map.copyOf(services),Map.copyOf(exceptions),Map.copyOf(routes),List.copyOf(transfers));
     }
     private static CSVParser csv(byte[] bytes) throws IOException {
         String text=new String(bytes,StandardCharsets.UTF_8);

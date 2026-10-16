@@ -104,3 +104,10 @@ body:not(.commute-ready) .journey-column,.journey-column{grid-area:journey;min-w
 .backup-guidance { border-top:1px solid #d8d6ca; padding-top:.75rem; }
 
 #leave-countdown { font-size:clamp(24px,7vw,38px); letter-spacing:-1px; overflow-wrap:anywhere; max-width:100%; }
+/* Keep the boarding decision visible without opening trip details. */
+.boarding-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:18px 0;padding:16px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.boarding-summary div{min-width:0;display:flex;flex-direction:column;gap:5px}.boarding-summary span{font-size:13px;font-weight:600}.boarding-summary strong{font-size:25px;line-height:1.2;font-variant-numeric:tabular-nums}.boarding-summary small{font-size:12px;overflow-wrap:anywhere}.decision-first-wait{font-size:14px;margin:10px 0}.estimate-state{padding:9px 0}.departure-decision .secondary{font-size:14px;align-self:flex-start;min-height:44px}
+@media(max-width:450px){.boarding-summary{grid-template-columns:minmax(0,1fr)}.boarding-summary div{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:3px 12px}.boarding-summary small{grid-column:1 / -1}.boarding-summary strong{font-size:24px}.boarding-summary div+div{padding-top:12px}}
+
+/* Supporting tools retain the same compact, responsive commute layout. */
+.utility-links{display:flex;gap:.8rem;flex-wrap:wrap;align-items:center;margin:1rem 0}.notification-settings{margin-top:1rem}.table-scroll{max-width:100%;overflow:auto;margin:1rem 0}table{border-collapse:collapse;width:100%}th,td{text-align:left;padding:.7rem;border-bottom:1px solid #d9ded6;min-width:110px}textarea{width:100%;min-height:85px;padding:.8rem;border:1px solid #b8c4b9;border-radius:10px;font:inherit;box-sizing:border-box}.stop-result{padding:.5rem 0;border-bottom:1px solid #d9ded6}.history-page .panel{margin:1rem 0}.history-page{max-width:1000px;margin:2rem auto}.history-page h1{font-size:clamp(1.7rem,5vw,2.7rem)}.header-actions{flex-wrap:wrap}code{overflow-wrap:anywhere}

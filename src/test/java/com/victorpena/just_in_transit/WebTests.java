@@ -16,8 +16,9 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 @AutoConfigureMockMvc
 class WebTests {
     @Autowired MockMvc mvc;
-    @org.springframework.test.context.bean.override.mockito.MockitoSpyBean CommuteRepository saved;
-    @BeforeEach void reset() { saved.deleteAll(); }
+    @org.springframework.test.context.bean.override.mockito.MockitoBean BrowserIdentity browser;
+    @org.springframework.test.context.bean.override.mockito.MockitoSpyBean BrowserCommuteStore saved;
+    @BeforeEach void reset() { org.mockito.Mockito.when(browser.id()).thenReturn("test-browser"); saved.deleteAll(); }
     MockHttpServletRequestBuilder commute(String path) {
         return post(path).with(csrf()).param("origin","Test home").param("destination","Test clock-in")
             .param("date","2030-01-02").param("arriveBy","09:00").param("walkToStop","8")
@@ -34,10 +35,30 @@ class WebTests {
         assertEquals(0,saved.count());
     }
     @Test void savesLoadsAndDeletesLocalCommute() throws Exception {
-        mvc.perform(commute("/save")).andExpect(redirectedUrl("/")).andExpect(flash().attribute("notice",containsString("Commute saved")));
+        var response=mvc.perform(commute("/save").param("maxBoardingWait","12").param("maxTransferWait","18"))
+            .andExpect(redirectedUrl("/")).andExpect(flash().attribute("notice",containsString("Commute saved"))).andReturn();
+        mvc.perform(get("/").flashAttrs(response.getFlashMap())).andExpect(status().isOk())
+            .andExpect(content().string(containsString("2030-01-02")));
+        assertEquals(12,saved.findById(1L).orElseThrow().maxBoardingWait);
+        assertEquals(18,saved.findById(1L).orElseThrow().maxTransferWait);
         assertEquals("Test home",saved.findById(1L).orElseThrow().origin);
         mvc.perform(get("/")).andExpect(content().string(containsString("Test home")));
         mvc.perform(post("/forget").with(csrf())).andExpect(status().is3xxRedirection());
+        assertEquals(0,saved.count());
+    }
+    @Test void unparseableNumberRendersErrorsInsteadOfCrashingTheTemplate() throws Exception {
+        saved.save(SavedCommute.from(new CommuteForm("Existing home","Work",java.time.LocalDate.of(2030,1,2),java.time.LocalTime.of(9,0),8,3,10,3,5,5,"83463")));
+        for(String field:java.util.List.of("walkToStop","maxTransferWait","date","arriveBy")) {
+            mvc.perform(commute("/save").with(request->{request.setParameter(field,"not-a-value");return request;}))
+                .andExpect(status().isOk()).andExpect(model().attributeHasFieldErrors("commute",field))
+                .andExpect(content().string(containsString("Check these details.")));
+            assertEquals("Existing home",saved.findById(1L).orElseThrow().origin);
+        }
+    }
+    @Test void invertedWaitLimitsAreRejectedWithoutSaving() throws Exception {
+        mvc.perform(commute("/save").param("maxTransferWait","2"))
+            .andExpect(status().isOk()).andExpect(model().attributeHasErrors("commute"))
+            .andExpect(content().string(containsString("Maximum waits must be at least")));
         assertEquals(0,saved.count());
     }
     @Test void planDoesNotSilentlySavePersonalDetails() throws Exception {

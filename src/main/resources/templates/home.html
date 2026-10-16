@@ -2,18 +2,19 @@
 <html lang="en" xmlns:th="http://www.thymeleaf.org">
 <head>
     <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="_csrf" th:content="${_csrf.token}"><meta name="_csrf_header" th:content="${_csrf.headerName}"><link rel="manifest" href="/manifest.webmanifest"><link rel="apple-touch-icon" href="/icon-192.png"><script defer src="/notifications.js"></script>
     <meta name="theme-color" content="#173f35">
     <title>Just in Transit · Your commute, with room to breathe</title>
     <meta name="referrer" content="strict-origin-when-cross-origin">
-    <link rel="stylesheet" th:href="@{/vendor/leaflet/leaflet.css}"><link rel="stylesheet" th:href="@{/app.css(v='commute-windows-1')}">
-    <script defer th:src="@{/vendor/leaflet/leaflet.js}"></script><script defer th:src="@{/app.js(v='commute-windows-1')}"></script><script defer th:src="@{/live-map.js(v='commute-windows-1')}"></script>
-    <script defer th:src="@{/daily.js(v='commute-windows-1')}"></script>
+    <link rel="stylesheet" th:href="@{/vendor/leaflet/leaflet.css}"><link rel="stylesheet" th:href="@{/app.css(v='commute-jev-20261016')}">
+    <script defer th:src="@{/vendor/leaflet/leaflet.js}"></script><script defer th:src="@{/app.js(v='commute-jev-20261016')}"></script><script defer th:src="@{/live-map.js(v='commute-jev-20261016')}"></script>
+    <script defer th:src="@{/daily.js(v='commute-jev-20261016')}"></script>
     <script defer src="/offline-card.js"></script><script defer src="/stage.js"></script>
 </head>
 <body th:classappend="${hasJourneyContent ? 'commute-ready' : ''}">
 <header class="topbar wrap">
     <a class="brand" href="/" aria-label="Just in Transit home"><span class="brand-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><rect x="5" y="3" width="14" height="16" rx="4"/><path d="M5 11h14M8 6h8M8 19v2m8-2v2"/><circle cx="8.5" cy="15.5" r=".7"/><circle cx="15.5" cy="15.5" r=".7"/></svg></span>just in <strong>transit.</strong></a>
-    <div class="header-actions"><a href="/history">Trip history</a><span class="location">SAN ANTONIO <span class="location-dot"></span> VIA</span><form th:if="${protectedAccess}" th:action="@{/logout}" method="post"><button class="text-button" type="submit">Sign out</button></form></div>
+    <div class="header-actions"><a href="/history">Trip history</a><a href="/alternatives">Other routes</a><span class="location">SAN ANTONIO <span class="location-dot"></span> VIA</span><form th:if="${protectedAccess}" th:action="@{/logout}" method="post"><button class="text-button" type="submit">Sign out</button></form></div>
 </header>
 <main class="wrap">
     <section class="hero compact-hero">
@@ -155,10 +156,10 @@
                     <p class="walk-line" th:text="${commute.walkToWork + ' min final walk to your destination'}"></p>
                 </div>
                 <div th:unless="${journey.finished()}" class="journey-refresh"><p class="small-note">The map’s refresh control also updates these remaining estimates while the page is visible. Check again when you unlock your phone.</p><a href="/">Refresh all details ↻</a></div>
-                <div class="walking-links"><a th:href="${transferMap}" target="_blank" rel="noopener noreferrer">Transfer walk ↗</a><a th:href="${workMap}" target="_blank" rel="noopener noreferrer">Final walk ↗</a></div>
+                <p><a href="/assistant">Try commute assistant</a> · <a href="/alternatives">Explore other routes</a></p><div class="walking-links"><a th:href="${transferMap}" target="_blank" rel="noopener noreferrer">Transfer walk ↗</a><a th:href="${workMap}" target="_blank" rel="noopener noreferrer">Final walk ↗</a></div>
                 <p class="small-note" th:text="${journey.state.facts.keepHistory ? 'A trip report will be saved only when you confirm arrival and finish.' : 'Trip history is off for this commute.'}"></p>
                 <form th:action="@{/journey/action}" method="post" class="end-journey"><input type="hidden" name="revision" th:value="${journey.state.revision}"><input type="hidden" name="action" value="end"><button class="secondary" type="submit" th:text="${journey.finished() ? 'Finish commute' : 'End commute and return to planning'}"></button></form>
-                <p class="privacy-note">Your last confirmed step is saved for up to 18 hours, including across a server restart. Reopen in the same browser to resume. Finishing, ending, discarding or deleting your commute removes the recovery checkpoint. A completed report is retained only if you opted in; delete it from Trip history. Signing out removes access from this browser. Find me is optional and only runs while the page is visible. No background tracking or notifications.</p>
+                <p class="privacy-note">Your last confirmed step is saved for up to 18 hours, including across a server restart. Reopen in the same browser to resume. Finishing, ending, discarding or deleting your commute removes the recovery checkpoint. A completed report is retained only if you opted in; delete it from Trip history. Signing out removes access from this browser. Find me is optional and only runs while the page is visible. No background location tracking. Optional phone reminders use your selected plan and VIA data.</p>
             </section>
             <section class="panel results" th:if="${journey == null and result != null}" aria-labelledby="results-title">
                 <h2 id="results-title" class="sr-only">Your departure plan</h2>
@@ -169,10 +170,16 @@
                     <p class="date-context"><span th:text="${#temporals.format(commute.date, 'EEEE, MMMM d')}"></span> · <span th:text="${commute.departing() ? 'leave after' : 'arrive by'}"></span> <strong th:text="${commute.arriveBy}"></strong><br><a th:if="${hasSaved}" href="#daily-form">Change time or current stage ↓</a></p>
                     <details th:if="${result.options.size() > 1}" id="compare-departures" class="compare-departures"><summary>Compare other departures</summary><div id="alternatives"></div></details>
                     <article class="option" th:each="option, row : ${result.options}" th:classappend="${option.qualityClass()}" th:attr="data-option-index=${row.index},id=${row.index == 0 ? 'recommendation' : null},data-token=${row.index == 0 ? planToken : null},data-now=${renderedAt},data-start-mode=${commute.startMode}">
-                        <div class="option-top"><span class="option-label" th:text="${option.comparisonLabel(result.options[0])}"></span><span class="badge" th:text="${option.displayRating()}"></span></div>
+                        <div class="utility-links"><button type="button" class="text-button" th:if="${canStart}" th:attr="data-watch-token=${planToken},data-watch-option=${row.index}">Remind me about this departure</button><a th:href="@{/assistant(token=${planToken},option=${row.index})}">Try commute assistant</a></div><div class="option-top"><span class="option-label" th:text="${option.comparisonLabel(result.options[0])}"></span><span class="badge" th:text="${option.displayRating()}"></span></div>
                         <div th:if="${row.index == 0}" class="departure-decision"><span id="leave-heading" th:text="${commute.onboard() ? 'At transfer stop at' : commute.atStop() ? 'First bus boards at' : 'Leave starting point at'}"></span><strong id="leave-countdown" th:text="${commute.onboard() ? option.first.alight.display() : commute.atStop() ? option.first.board.display() : option.leaveDisplay()}"></strong><small id="leave-basis">Waiting for refreshed estimates…</small></div>
                         <p class="comparison-detail" th:unless="${row.index == 0}" th:text="${option.comparisonDetail(result.options[0])}"></p>
                         <div class="departure"><div><span th:text="${commute.onboard() ? 'First bus boarded earlier' : commute.atStop() ? 'Board first bus' : 'Leave starting point'}"></span><strong data-decision-leave th:text="${commute.onboard() ? option.first.board.display() : commute.atStop() ? option.first.board.display() : option.leaveDisplay()}"></strong></div><span class="arrow" aria-hidden="true">→</span><div><span>At your destination</span><strong data-decision-work th:text="${option.workDisplay()}"></strong></div></div>
+                        <div class="boarding-summary" aria-label="Bus boarding times">
+                            <div><span th:text="${commute.onboard() ? 'First bus boarding estimate' : 'Board the ' + route.firstRoute}"></span><strong data-first-board th:text="${option.first.board.display()}"></strong><small th:text="${originStopName}"></small></div>
+                            <div><span>Reach Martin &amp; Leona</span><strong data-transfer-arrival th:text="${option.first.alight.display()}"></strong><small th:text="${commute.transferWalk + ' min walk to the next stop'}"></small></div>
+                            <div><span th:text="${'Board the ' + route.secondRoute}"></span><strong data-second-board th:text="${option.second.board.display()}"></strong><small>Martin Opposite Leona</small></div>
+                        </div>
+                        <p class="decision-first-wait" data-first-wait th:text="${commute.onboard() ? 'Already aboard' : commute.atStop() ? 'First-stop wait is checked from now' : commute.boardingBuffer + ' min planned wait at first stop, after your walk'}"></p>
                         <p class="decision-margin"><strong data-decision-deadline th:text="${option.deadlineLabel()}"></strong> · <span th:text="${route.routes()}"></span></p>
                         <p class="decision-transfer"><strong data-decision-transfer th:text="${option.transferMargin + ' min after the transfer walk'}"></strong></p>
                         <div class="commute-breakdown" th:with="timing=${option.timing(commute)}">
@@ -200,6 +207,7 @@
                         <p th:unless="${canStart}" class="small-note">You can start this commute on its travel date.</p>
 
                         <div class="option-footer"><span th:text="${option.dataLabel()}"></span></div>
+                        <p class="estimate-state small-note" data-estimate-state role="status">Checking the displayed estimates…</p>
                         <p class="confidence-note" data-decision-confidence th:text="${option.confidenceWarning()}"></p>
                         <details class="trip-details"><summary>Stops, transfer &amp; backup bus</summary><div class="timeline">
                             <div><b class="mini-bus" th:text="${route.firstRoute}">24</b><p><strong th:text="${originStopName}"></strong><span th:text="${option.first.board.source}"></span></p><time data-timing-board-first th:text="${option.first.board.display()}"></time></div>
@@ -219,8 +227,8 @@
                         <p class="small-note" th:if="${option.backup == null}">No later matching second bus found in the service days checked. No backup arrival is available.</p>
                         </details>
                     </article>
-                    <a href="#edit-commute" data-edit-commute class="edit-shortcut">Edit stops, walks &amp; buffers ↓</a>
-                    <div th:unless="${#lists.isEmpty(result.options)}"><label class="refresh-toggle"><input id="auto-refresh" type="checkbox"> Refresh this plan every 30 seconds</label><p class="small-note">Updates while this page is open. A buffer is a planning rule, not a guarantee of making the trip. “Boarding proxy” uses a predicted arrival because VIA did not supply a departure estimate.</p></div>
+                    <a href="#edit-commute" data-edit-commute class="edit-shortcut">Edit stops, walks &amp; wait limits ↓</a>
+                    <div th:unless="${#lists.isEmpty(result.options)}"><label class="refresh-toggle"><input id="auto-refresh" type="checkbox"> Recompare departure options every 30 seconds</label><p class="small-note">VIA delay reports update estimates while this page is visible. Traffic and construction are only reflected when reported in those estimates or advisories; there is no separate traffic forecast. Phone reminders run only after you enable them. A buffer is a planning rule, not a guarantee of making the trip. “Boarding proxy” uses a predicted arrival because VIA did not supply a departure estimate.</p></div>
                     <div class="walking-links"><span>Check the walks in Google Maps</span><a th:href="${homeMap}" target="_blank" rel="noopener noreferrer">Start → first stop ↗</a><a th:href="${transferMap}" target="_blank" rel="noopener noreferrer">Transfer walk ↗</a><a th:href="${workMap}" target="_blank" rel="noopener noreferrer">Last stop → destination ↗</a></div>
                 </div>
             </section>
@@ -259,12 +267,14 @@
         <details class="map-extras"><summary>Map legend, updates &amp; privacy</summary><p class="map-legend"><span>🔵 You (accuracy circle)</span><span>● Stops</span><span>24 / 93 Bus reports</span><span>★ Selected trip</span><span>Gray = unconfirmed</span></p>
         <details class="map-bus-details"><summary>Bus reports and times</summary><ul id="map-bus-list"></ul></details>
         <label class="refresh-toggle"><input id="map-auto-refresh" type="checkbox" checked> Refresh buses and estimates every 30 seconds</label>
-        <p class="privacy-note">Location is used while this page is visible; no location history is recorded. Using a point fills your commute form. Map tiles share the viewed area and your IP address with the map provider. No background tracking or notifications. <a href="https://www.openstreetmap.org/fixthemap" target="_blank" rel="noopener noreferrer">Report a map issue</a></p></details>
+        <p class="privacy-note">Location is used while this page is visible; no location history is recorded. Using a point fills your commute form. Map tiles share the viewed area and your IP address with the map provider. No background location tracking. Optional phone reminders use your selected plan and VIA data. <a href="https://www.openstreetmap.org/fixthemap" target="_blank" rel="noopener noreferrer">Report a map issue</a></p></details>
         </details>
         <noscript><p class="field-note">The map and countdowns need JavaScript. Your timetable and manual stop settings still work below.</p></noscript>
     </section>
     </div>
+    <section class="panel notification-settings"><h2>Phone reminders</h2><p>Get a departure reminder and notices when your active connection needs a check. Reminders use bus estimates and your last confirmed stage; they can appear on your lock screen. They do not track your location.</p><div class="utility-links"><button type="button" id="enable-notifications">Enable notifications</button><button type="button" class="secondary" id="disable-notifications">Turn notifications off</button><button type="button" class="text-button" id="stop-reminders">Stop this trip's reminders</button></div><p id="notification-status" role="status">Checking notification support…</p><p class="small-note">On iPhone, add the app to your Home Screen and open it there to enable notifications. Delivery depends on your device, connection and the app server staying online. Always check the plan before travelling.</p></section>
     <section class="panel offline-settings"><h2>Offline trip card</h2><label class="refresh-toggle"><input id="keep-offline" type="checkbox"> Keep an offline card on this device</label><p class="small-note">Saves this trip’s public stop names, steps and last estimates in this browser for up to 18 hours. Anyone using this browser can read it. No home/work addresses, map points or location trail are included. HTTPS or localhost is required.</p><p id="offline-status" class="field-note" role="status"></p><a href="/offline.html">Open saved trip card</a></section>
+<p class="privacy-note">Saved settings and trip reports belong to this browser. Clearing cookies or using a different browser starts a separate setup. <a href="/restore">Restore an older setup</a>.</p>
     <footer><strong>just in transit.</strong><div><span>Data provided by VIA Metropolitan Transit. Independent project; not affiliated with VIA.</span><br><span>Address and walking data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap contributors</a> · address ranges by U.S. Census · place search by Photon · walking routes by Valhalla.</span></div></footer>
 </main>
 </body>

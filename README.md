@@ -1,6 +1,44 @@
 # Just in Transit
 
-A private daily commute assistant for San Antonio: Going to Work (24 → 93) and Going Home (93 → 24).
+A San Antonio commute assistant with guided 24 → 93 / 93 → 24 trips and a separate all-route comparison view.
+
+## Current update — October 16, 2026
+
+Read [UPDATE-GUIDE.md](UPDATE-GUIDE.md) for installation, restoration of existing data, deployment variables and limitations.
+
+- Fixed explicit public-profile startup and isolated saved commutes/history by browser, with a protected import path for older data.
+- Added initial estimates versus rider-confirmed times, notes and CSV export.
+- Added opt-in Web Push and an installable app manifest; configure signing credentials before enabling notifications.
+- Added direct/one-transfer alternatives across the complete VIA schedule.
+- Added optional Jev shadow evaluation of advisories and rider updates, with feedback and safe failure behavior. It is off by default and cannot change routes or progress.
+- Added request references for unexpected application errors.
+- Merged with the latest GitHub improvements, preserving balanced/latest/safer ranking, traffic allowances, complete-trip breakdowns and active-trip guidance.
+
+The current Maven suite passes **207 tests: 206 passed, one optional captured-feed test skipped** on Java 17 / Spring Boot 4.1.1. Jev account acceptance and real-phone push delivery still need your configuration. See the current guide for the exact checks and remaining limits.
+
+## Historical release notes
+
+Everything below records earlier releases. Statements below about shared settings, unavailable Maven dependencies, no new dependencies, or lack of notifications are historical and are superseded by the current guide.
+
+## Reliability and waiting preferences — October 15
+
+- **Longer-lived departure plans:** preview tokens stay valid for up to 18 hours in the same browser session instead of failing at 20 minutes. Refresh checks the same selected buses against current schedule/live data. Starting always revalidates boarding and transfer feasibility. A replaced, expired or lost-session plan now offers **Find fresh departures**. This does not promise that old departure times remain usable.
+- **Waiting windows:** save a minimum and maximum wait at the first stop and after the transfer walk. Existing minimum buffers are retained. New maxima default to 15 minutes at the first stop and 20 at the transfer (never below a saved minimum). Walking time is separate. At-home departure timing uses the minimum first-stop wait; at-stop planning evaluates actual remaining wait. On-board planning skips first-stop waiting. When no on-time trip meets every preference, the app shows a clearly labeled fallback rather than hiding available service.
+- **Ranking:** arrive-by plans from the starting point prefer all requested buffers/wait limits, then less total waiting, then later departure. Departure and stage-start modes prefer matching preferences among on-time candidates and then earliest arrival. When every option is late, earliest arrival wins. The existing 90-minute transfer search cap remains.
+- **Boarding times:** the main recommendation now shows first boarding, Martin & Leona arrival, second boarding, and waiting after the transfer walk. These times refresh with the recommendation. Stale displayed times are explicitly labeled.
+- **Save and error recovery:** successful saves redirect to a GET page, preserving the submitted date and settings. Reloading does not repeat the save. Invalid wait windows return inline validation. A reproduced record-binding/template crash on malformed number/date/time input was repaired so the entered form and its field errors remain renderable. Database errors return a readable recovery page; the valid submitted form is remembered in the session before attempting a save. General errors also have a branded recovery page. The user's original intermittent production submit exception was not reproduced from its original server log, so these changes must not be described as proof of that exact root cause.
+- **Isolated tests:** Surefire and the context-startup test use an in-memory H2 database and disable external feeds, avoiding the personal file database lock seen in the uploaded test report.
+- **Traffic limits:** the interface explicitly explains that traffic/construction affects estimates only through VIA's reported predictions/advisories. No independent traffic forecast, automatic rerouting or background notifications were added.
+
+### Apply this update
+
+Stop the running app first. Run `bash apply-update.sh /absolute/path/to/your/original/just-in-transit` from this extracted project. The script backs up the existing source and local data, then copies source/configuration while preserving Git history and saved commute data. Run `sh mvnw clean test` in your original project, then restart it. The development `ddl-auto=update` setting adds two nullable wait-limit columns; old records receive defaults when read.
+
+### Validation of this build
+
+The modified production Java classes compiled with locally available dependencies. **37 focused Java test methods passed** using a local assertion runner (not the Maven/JUnit engine). Browser checks exercised the real Spring MVC/Thymeleaf pages with synthetic transit feeds and in-memory repository doubles: save/redirect/reload, persistence of wait settings within the fixture, one-hour refresh, replaced-token recovery, invalid wait windows, malformed number/date/time input, edited daily time retention, simulated database error recovery, visible boarding times and widths of 320/390/768/1280 pixels, with no JavaScript errors. The local web harness used the available Spring Boot 4.1.0 dependencies; the project still declares 4.1.1.
+
+The exact Maven suite and a real database migration could not run here because Maven Central dependencies were unavailable. Run the included suite on your computer before relying on this update. Live VIA accuracy and real-phone background behavior were not verified. Historical validation notes below describe earlier deliveries, not a new test run.
 
 ## Complete commute windows — October 14, 2026
 
@@ -45,7 +83,7 @@ The recommendation refreshes while visible. Stale estimates, failed requests and
 
 ### Validation for this delivery
 
-- Maven package and the full suite: **149 tests, 148 passed, one optional captured-feed integration test skipped; zero failures or errors**.
+- Earlier delivery claimed a clean 149-test suite. The uploaded reports actually contain **147 passed, one database-lock error, and one optional captured-feed integration test skipped**; those are historical reports, not validation of this build.
 - New coverage includes stage starts after leave time, explicit aboard-trip selection, undo and checkpoint recovery, correct reverse stop order, departure-only planning, separate settings, report opt-in/completion/deletion, CSRF/authentication and private offline snapshots.
 - Browser checks used real Spring-rendered templates with mocked transit responses. They covered stage-aware countdowns/start buttons, required return walks, saved settings, history defaults, real service-worker installation and offline navigation, cache contents, card expiry/deletion, end/sign-out clearing and widths of 320/390/768/1280 px. No JavaScript errors were observed. Phone layouts were visually reviewed.
 - These checks do not establish real VIA prediction accuracy, walking access, or real-phone HTTPS/GPS behavior. No hosting, certificates, background push alerts or automatic walking-time learning are included.
@@ -82,7 +120,7 @@ java -jar target/just-in-transit-0.0.1-SNAPSHOT.jar
 - Mobile-friendly Thymeleaf homepage with start address, destination, travel date, arrival deadline, entrance selection, walking minutes, and configurable buffers.
 - VIA GTFS Schedule reader, calendar exceptions, and service times beyond midnight.
 - GTFS Realtime TripUpdates reader, 30-second fetch cache, feed timestamps, and clear scheduled/live labels for each stop event.
-- Up to three departure options for the chosen corridor. Arrival-mode home starts prefer buffers and later departures; departure-mode and stage starts prefer earliest remaining arrival.
+- Up to three departure options for the chosen corridor. Arrival-mode home starts prefer matching wait preferences and buffers, shorter waiting, then later departures; departure-mode and stage starts prefer matching preferences among on-time candidates, then earliest remaining arrival.
 - Transfer margin, destination arrival margin, and a backup card showing the next matching 93 departure, arrival at your destination including the final walk, and minutes early or late.
 - Explicit address lookup, nearby stop choices in the correct direction, and pedestrian walking estimates with manual overrides.
 - VIA service advisories filtered to the selected journey, including backup buses; clear unavailable/stale alert states.
@@ -314,7 +352,7 @@ Run `python3 scripts/export_project.py` from the project. It creates a source-on
 2. Tap **Find me** to request browser location access. A blue dot and accuracy circle show the device's reported location. **Use my location as start** is available only for a San Antonio reading no older than 30 seconds with reported accuracy of 100 m or better. Check the point before using it. Coarse, denied, unavailable, or stale location readings have explicit messages. Phone access requires HTTPS; localhost is suitable for development. No location is requested on page load.
 3. If the address lookup cannot find your house, choose **Pin starting point** or **Pin destination**. Move the map until the entrance sits under the +, then choose **Use this point**. This confirms only that end of the commute, finds nearby supported stops, and clears its old walking estimate. Choose a stop to calculate the walk. You can keep manual walking minutes if a route lookup fails. Changing the address again invalidates that pin.
 4. Find a departure. The first option's countdowns appear above the map: leave time, 24 boarding, 93 boarding, and arrival at the destination. **Show this departure on the map** switches the preview to another offered option. The leave time subtracts the entered walk and boarding buffer from the 24's estimated boarding time. Seconds on the clock do not imply second-level prediction accuracy. Tomorrow's plan is labeled with its date; bus markers remain current reports.
-5. Countdown refresh keeps the same offered trip IDs and service dates. Preview offers expire after 20 minutes or when another plan replaces them. Editing settings clears the preview and asks you to plan again. Starting a commute switches the map to the active journey; completed steps stop counting down. Missing/canceled buses and expired estimates are labeled unavailable/unconfirmed. A passed estimate says **Check now**, never a negative countdown or a promise that a bus is still waiting.
+5. Countdown refresh keeps the same offered trip IDs and service dates. Preview offers expire after 18 hours, session loss, or when another plan replaces them. Starting still revalidates current feasibility. Editing settings clears the preview and asks you to plan again. Starting a commute switches the map to the active journey; completed steps stop counting down. Missing/canceled buses and expired estimates are labeled unavailable/unconfirmed. A passed estimate says **Check now**, never a negative countdown or a promise that a bus is still waiting.
 6. A star means a vehicle report explicitly matches the trip ID **and service date** in your plan. Reports without service dates can appear as route vehicles but are not confidently highlighted as your selected bus. Completed or missed legs are not highlighted. Positions cannot confirm that you boarded; continue using the existing progress buttons.
 7. The map refreshes every 30 seconds while visible; the displayed clocks tick each second. Active-journey details refresh without replacing the map. Feed and vehicle timestamps must both be within 90 seconds to display a fresh bus. Older/missing timestamps appear gray and unconfirmed; reports older than ten minutes are omitted. A request failure immediately marks remaining displayed reports and countdowns unconfirmed. Countdown validity also respects the trip-update timestamp, even when the feed envelope is newer.
 8. **Stop locating me** removes the location dot and stops the watch. Leaving/hiding the page pauses the watch; returning resumes only a watch you explicitly started. There is no background location history, automatic route recalculation from movement, or closed-app notification. **Use this point** places coordinates in the commute form; planning keeps them in the session and Save persists them as part of the existing commute settings.

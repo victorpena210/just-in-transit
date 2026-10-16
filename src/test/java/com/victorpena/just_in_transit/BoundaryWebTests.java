@@ -23,11 +23,12 @@ import com.google.transit.realtime.GtfsRealtime;
 @AutoConfigureMockMvc
 class BoundaryWebTests {
     @Autowired MockMvc mvc;
-    @Autowired CommuteRepository repository;
+    @org.springframework.test.context.bean.override.mockito.MockitoBean BrowserIdentity browser;
+    @Autowired BrowserCommuteStore repository;
     @MockitoBean ScheduleStore schedules;
     @MockitoBean AlertStore alerts;
     static final LocalDate DAY=LocalDate.of(2030,1,2);
-    @BeforeEach void fixture() throws Exception {
+    @BeforeEach void fixture() throws Exception { org.mockito.Mockito.when(browser.id()).thenReturn("test-browser");
         repository.deleteAll();
         var s=new Schedule(Map.of("81799",new Stop("81799","E. HOUSTON & MITTMAN",29.425194,-98.454422),
             "76779",new Stop("76779","MARTIN & LEONA",29.430046,-98.501998),
@@ -73,19 +74,21 @@ class BoundaryWebTests {
         Assertions.assertEquals(0,repository.count());
     }
     @Test void confirmedStartCanBeSavedWithManualDestinationAndUsesCoordinatesForWalkingLink() throws Exception {
-        var savedResult=mvc.perform(form("/save").param("locationMode","origin")
+        var response=mvc.perform(form("/save").param("locationMode","origin")
             .param("originLat","29.425194").param("originLon","-98.454422").param("resolvedOrigin","Example starting point"))
             .andExpect(redirectedUrl("/")).andReturn();
-        mvc.perform(get("/").flashAttrs(savedResult.getFlashMap())).andExpect(content().string(containsString("origin=29.425194%2C-98.454422")));
+        mvc.perform(get("/").flashAttrs(response.getFlashMap())).andExpect(status().isOk())
+            .andExpect(content().string(containsString("origin=29.425194%2C-98.454422")));
         var restored=repository.findById(1L).orElseThrow().form(DAY);
         Assertions.assertTrue(restored.usesAddress("origin"));Assertions.assertFalse(restored.usesAddress("destination"));
         Assertions.assertTrue(restored.isLocationResolved());Assertions.assertNull(restored.destinationLat());
     }
     @Test void confirmedDestinationCanBeSavedWithManualStart() throws Exception {
-        var savedResult=mvc.perform(form("/save").param("locationMode","destination")
+        var response=mvc.perform(form("/save").param("locationMode","destination")
             .param("destinationLat","29.593").param("destinationLon","-98.608").param("resolvedDestination","Example clock-in location"))
             .andExpect(redirectedUrl("/")).andReturn();
-        mvc.perform(get("/").flashAttrs(savedResult.getFlashMap())).andExpect(content().string(containsString("destination=29.593%2C-98.608")));
+        mvc.perform(get("/").flashAttrs(response.getFlashMap())).andExpect(status().isOk())
+            .andExpect(content().string(containsString("destination=29.593%2C-98.608")));
         var restored=repository.findById(1L).orElseThrow().form(DAY);
         Assertions.assertFalse(restored.usesAddress("origin"));Assertions.assertTrue(restored.usesAddress("destination"));
         Assertions.assertTrue(restored.isLocationResolved());

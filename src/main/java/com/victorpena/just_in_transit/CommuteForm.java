@@ -63,6 +63,7 @@ public record CommuteForm(
         return (boardingBuffer==null || maxBoardingWait>=boardingBuffer)
             && (transferBuffer==null || maxTransferWait>=transferBuffer);
     }
+    public CommuteForm withWaitLimits(int firstMax,int transferMax) { return withPreferences(firstMax,transferMax,trafficAllowance,preference); }
     public CommuteForm withPreferences(int firstMax,int transferMax,int traffic,String ranking) {
         return new CommuteForm(origin,destination,date,arriveBy,walkToStop,transferWalk,walkToWork,boardingBuffer,transferBuffer,arrivalBuffer,
             destinationStop,originStop,locationMode,originLat,originLon,destinationLat,destinationLon,resolvedOrigin,resolvedDestination,

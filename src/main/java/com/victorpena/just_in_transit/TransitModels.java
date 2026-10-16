@@ -25,13 +25,17 @@ public final class TransitModels {
         public boolean active(LocalDate date) { return !date.isBefore(start) && !date.isAfter(end) && days.contains(date.getDayOfWeek()); }
     }
     public record Schedule(Map<String, Stop> stops, List<Trip> trips, Map<String,Service> services,
-                           Map<String,Map<LocalDate,Boolean>> exceptions,Map<String,RouteInfo> routes) {
+                           Map<String,Map<LocalDate,Boolean>> exceptions,Map<String,RouteInfo> routes,List<Transfer> transfers) {
+        public Schedule(Map<String,Stop> stops,List<Trip> trips,Map<String,Service> services,Map<String,Map<LocalDate,Boolean>> exceptions,Map<String,RouteInfo> routes) { this(stops,trips,services,exceptions,routes,List.of()); }
         public Schedule(Map<String,Stop> stops,List<Trip> trips,Map<String,Service> services,
                         Map<String,Map<LocalDate,Boolean>> exceptions) { this(stops,trips,services,exceptions,Map.of()); }
         public boolean active(String service, LocalDate date) {
             Boolean override=exceptions.getOrDefault(service,Map.of()).get(date);
             return override!=null ? override : services.containsKey(service) && services.get(service).active(date);
         }
+    }
+    public record Transfer(String from,String to,int type,int minimumSeconds,String fromRoute,String toRoute,String fromTrip,String toTrip) {
+        public boolean matches(Trip a,Trip b) { return (fromRoute.isBlank() || fromRoute.equals(a.route())) && (toRoute.isBlank() || toRoute.equals(b.route())) && (fromTrip.isBlank() || fromTrip.equals(a.id())) && (toTrip.isBlank() || toTrip.equals(b.id())); }
     }
     public record RouteInfo(String agency,int type) { }
     public record Event(Instant at, String source, boolean live, boolean usable) {
@@ -51,7 +55,7 @@ public final class TransitModels {
         public String backupSummary() { return backup==null?"No later matching "+second.route()+" found in the checked service days.":
             "If you miss this "+second.route()+": estimated arrival "+backup.workDisplay()+" · "+backup.deadlineLabel()+"."; }
         public String comparisonLabel(Option best) {
-            if(equals(best))return !hasDeadline?"Earliest arrival":arrivalMargin<0?"Earliest remaining arrival":"Recommended";
+            if(equals(best))return !hasDeadline?(meetsBuffers?"Recommended departure":"Earliest available"):arrivalMargin<0?"Earliest remaining arrival":"Recommended";
             if(arrivalMargin<0)return "Later arrival";
             if(first.equals(best.first))return "Different transfer";
             if(leaveHome.isAfter(best.leaveHome))return "Leave later";

@@ -44,7 +44,7 @@ public class AccessSettings {
         this.password = password;
         if (publicAccess) {
             log.warn("PUBLIC ACCESS ENABLED: no website login is required. Saved commute settings "
-                    + "and trip history can be viewed, changed or deleted by anyone who reaches this app.");
+                    + "and trip history belong to the browser credential; keep browser access private.");
         }
     }
 

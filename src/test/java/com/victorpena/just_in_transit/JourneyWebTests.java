@@ -21,11 +21,12 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 @AutoConfigureMockMvc
 class JourneyWebTests {
     @Autowired MockMvc mvc;
-    @Autowired CommuteRepository saved;
+    @org.springframework.test.context.bean.override.mockito.MockitoBean BrowserIdentity browser;
+    @Autowired BrowserCommuteStore saved;
     @Autowired TripReportRepository reports;
     @MockitoBean ScheduleStore schedules;
     @MockitoBean Clock clock;
-    @BeforeEach void setup() {
+    @BeforeEach void setup() { org.mockito.Mockito.when(browser.id()).thenReturn("test-browser");
         saved.deleteAll();reports.deleteAll();var base=schedule();
         var stops=java.util.Map.of("81799",new TransitModels.Stop("81799","Houston & Mittman",29.425,-98.454),
             "76779",new TransitModels.Stop("76779","Martin & Leona",29.43,-98.502),
@@ -80,6 +81,16 @@ class JourneyWebTests {
             .andExpect(jsonPath("$.stops.length()").value(4)).andExpect(header().string("Cache-Control",containsString("no-store")));
         mvc.perform(get("/maps/live").param("token",token)).andExpect(status().isOk()).andExpect(jsonPath("$.countdowns.length()").value(0));
         assertEquals(0,saved.count());
+    }
+    @Test void livePreviewRemainsAvailableAfterTwentyMinutesAndExplainsReplacedPlans() throws Exception {
+        var response=mvc.perform(plan()).andReturn();var session=(MockHttpSession)response.getRequest().getSession(false);
+        String token=(String)response.getModelAndView().getModel().get("planToken");
+        when(clock.instant()).thenReturn(at("08:00"));
+        mvc.perform(get("/maps/live").session(session).param("token",token))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.planExpired").value(false))
+            .andExpect(jsonPath("$.decision.secondBoard").value("7:55 AM"));
+        mvc.perform(get("/maps/live").session(session).param("token","replaced"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.planExpired").value(true));
     }
     @Test void activeMapUsesPinnedTripAfterItsLeaveTimeAndRejectsMalformedParameters() throws Exception {
         var session=start();when(clock.instant()).thenReturn(at("07:05"));
@@ -215,7 +226,7 @@ class JourneyWebTests {
     @Test void historyIsOffByDefaultAndDeletionRequiresCsrf() throws Exception {
         var session=start();assertEquals(0,reports.count());
         mvc.perform(get("/history").session(session)).andExpect(status().isOk()).andExpect(content().string(containsString("No completed trip reports yet")));
-        var report=new TripReport();report.id="example";report.corridor="work";report.travelDate=DAY;report.actualArrival=at("08:40");report.transferOutcome="Made selected transfer";reports.save(report);
+        var report=new TripReport();report.id="example";report.owner="test-browser";report.corridor="work";report.travelDate=DAY;report.actualArrival=at("08:40");report.transferOutcome="Made selected transfer";reports.save(report);
         mvc.perform(post("/history/delete").param("id","example")).andExpect(status().isForbidden());assertEquals(1,reports.count());
         mvc.perform(get("/history")).andExpect(status().isOk()).andExpect(content().string(containsString("Not recorded")));
         mvc.perform(post("/history/delete").with(csrf()).param("id","example")).andExpect(redirectedUrl("/history"));assertEquals(0,reports.count());

@@ -21,11 +21,12 @@ public final class ActiveJourney {
         public String label() { return label; }
         public String nextLabel() { return nextLabel; }
     }
-    public record Facts(String id,Instant plannedDeparture,Instant plannedArrival,boolean keepHistory,Map<String,Instant> confirmations) {
-        public Facts { confirmations=confirmations==null?Map.of():Map.copyOf(confirmations); }
+    public record Facts(String id,Instant plannedDeparture,Instant plannedArrival,boolean keepHistory,Map<String,Instant> confirmations,Map<String,Instant> predictions,Map<String,String> predictionSources) {
+        public Facts { confirmations=confirmations==null?Map.of():Map.copyOf(confirmations);predictions=predictions==null?Map.of():Map.copyOf(predictions);predictionSources=predictionSources==null?Map.of():Map.copyOf(predictionSources); }
+        public Facts(String id,Instant plannedDeparture,Instant plannedArrival,boolean keepHistory,Map<String,Instant> confirmations) { this(id,plannedDeparture,plannedArrival,keepHistory,confirmations,Map.of(),Map.of()); }
         Facts confirm(String event,Instant at) {
             var updated=new HashMap<>(confirmations);updated.put(event,at);
-            return new Facts(id,plannedDeparture,plannedArrival,keepHistory,updated);
+            return new Facts(id,plannedDeparture,plannedArrival,keepHistory,updated,predictions,predictionSources);
         }
     }
     public record State(String revision,CommuteForm form,Option option,Phase phase,Instant started,
@@ -102,7 +103,9 @@ public final class ActiveJourney {
         var option=option(form,first,second,selected.leaveHome(),first.alight().at().plusSeconds(form.transferWalk()*60L));
         Phase phase=form.onboard()?Phase.ON_24:form.atStop()?Phase.WAITING_FOR_24:Phase.WALKING_TO_24;
         var facts=new Facts(UUID.randomUUID().toString(),phase==Phase.WALKING_TO_24?selected.leaveHome():null,option.atWork(),keepHistory,
-            Map.of(phase==Phase.WALKING_TO_24?"leftOrigin":phase==Phase.WAITING_FOR_24?"atFirstStop":"joinedOnboard",now));
+            Map.of(phase==Phase.WALKING_TO_24?"leftOrigin":phase==Phase.WAITING_FOR_24?"atFirstStop":"joinedOnboard",now),
+            Map.of("ON_24",first.board().at(),"TRANSFERRING",first.alight().at(),"ON_93",second.board().at(),"WALKING_TO_DESTINATION",second.alight().at(),"ARRIVED",option.atWork()),
+            Map.of("ON_24",first.board().source(),"TRANSFERRING",first.alight().source(),"ON_93",second.board().source(),"WALKING_TO_DESTINATION",second.alight().source(),"ARRIVED","Bus estimate plus entered walk"));
         return new State(UUID.randomUUID().toString(),form,option,phase,now,now,Set.of(),false,false,facts,null);
     }
     public static View view(State state,Schedule schedule,LiveSnapshot live,Instant now) {
@@ -123,6 +126,7 @@ public final class ActiveJourney {
             if(!second.board().usable() || !second.alight().usable())warnings.add("Your selected 93 is unavailable or a required stop is skipped. Once at the transfer stop, use “Find another 93”.");
             else if(second.board().at().isBefore(ready))warnings.add("The selected 93 is earlier than your estimated readiness at the transfer stop. Your buses stay selected until you choose another 93.");
             else if(updated.transferMargin()<f.transferBuffer())warnings.add("The remaining transfer is tighter than your requested buffer.");
+            if(updated.transferMargin()>f.maxTransferWait())warnings.add("The remaining transfer wait exceeds your preferred maximum. Check another departure if needed.");
             if(!first.alight().directPrediction() && !off24 || !second.board().directPrediction())warnings.add("Connection unconfirmed: some remaining transfer times are scheduled, inferred, or uncertain. Check the event labels.");
         }
         if(state.needs24())warnings.add("No usable replacement 24 → 93 connection was found within six hours. Your boarding stop and deadline are kept. Check again or consult VIA for another route.");

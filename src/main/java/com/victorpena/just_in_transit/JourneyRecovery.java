@@ -13,6 +13,7 @@ import tools.jackson.databind.DeserializationFeature;
 public class JourneyRecovery {
     static final String COOKIE="JIT_JOURNEY";
     private final JourneyCheckpointRepository records;
+    @org.springframework.beans.factory.annotation.Autowired private BrowserIdentity browser;
     private final JsonMapper json=JsonMapper.builder().disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES).build();
     public JourneyRecovery(JourneyCheckpointRepository records) { this.records=records; }
     private String id(HttpServletRequest request) {
@@ -23,7 +24,7 @@ public class JourneyRecovery {
     public ActiveJourney.State load(HttpServletRequest request,Instant now) {
         String id=id(request);if(id==null)return null;
         var record=records.findById(id).orElse(null);
-        if(record==null)return null;
+        if(record==null || record.owner!=null && !record.owner.equals(browser.id()))return null;
         if(!now.isBefore(record.expiresAt)) { records.deleteById(id);return null; }
         try {
             var state=json.readValue(record.payload,ActiveJourney.State.class);
@@ -32,10 +33,15 @@ public class JourneyRecovery {
     }
     public void save(HttpServletRequest request,HttpServletResponse response,ActiveJourney.State state,Instant now) {
         records.deleteByExpiresAtBefore(now);
-        String old=id(request);if(old!=null)records.deleteById(old);
+        String old=id(request);
+        if(old!=null) {
+            var existing=records.findById(old).orElse(null);
+            if(existing!=null && existing.owner!=null && !existing.owner.equals(browser.id()))old=null;
+            else records.deleteById(old);
+        }
         if(state==null) { cookie(response,request,"",0);return; }
         var record=new JourneyCheckpoint();record.id=old==null?UUID.randomUUID().toString():old;
-        record.payload=json.writeValueAsString(state);record.expiresAt=state.started().plus(Duration.ofHours(18));records.save(record);
+        record.owner=browser.id();record.payload=json.writeValueAsString(state);record.expiresAt=state.started().plus(Duration.ofHours(18));records.save(record);
         cookie(response,request,record.id,Math.max(0,Duration.between(now,record.expiresAt).getSeconds()));
     }
     private void cookie(HttpServletResponse response,HttpServletRequest request,String value,long seconds) {

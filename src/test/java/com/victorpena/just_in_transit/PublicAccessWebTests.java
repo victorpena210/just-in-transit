@@ -33,7 +33,7 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 class PublicAccessWebTests {
     @Autowired MockMvc mvc;
     @Autowired AccessSettings access;
-    @Autowired CommuteRepository saved;
+    @Autowired BrowserCommuteRepository saved;
     @Autowired Environment environment;
 
     @BeforeEach void reset() { saved.deleteAll(); }
@@ -88,19 +88,20 @@ class PublicAccessWebTests {
         assertEquals(0, saved.count());
     }
 
-    @Test void visitorCanSaveViewAndDeleteSharedCommuteWithCsrf() throws Exception {
-        mvc.perform(https(post("/save")).with(csrf())
+    @Test void visitorCanSaveViewAndDeleteOwnCommuteWithCsrf() throws Exception {
+        var savedResponse=mvc.perform(https(post("/save")).with(csrf())
                 .param("origin", "Public test stop").param("destination", "Public destination")
                 .param("date", "2030-01-02").param("arriveBy", "09:00")
                 .param("walkToStop", "8").param("transferWalk", "3").param("walkToWork", "10")
                 .param("boardingBuffer", "3").param("transferBuffer", "5").param("arrivalBuffer", "5")
                 .param("destinationStop", "83463"))
-                .andExpect(redirectedUrl("/")).andExpect(unauthenticated());
+                .andExpect(redirectedUrl("/")).andExpect(unauthenticated()).andReturn();
         assertEquals(1, saved.count());
-        // No session is reused: saved settings are intentionally shared, not per-visitor.
-        mvc.perform(https(get("/"))).andExpect(status().isOk())
+        var session=(org.springframework.mock.web.MockHttpSession)savedResponse.getRequest().getSession();
+        mvc.perform(https(get("/"))).andExpect(content().string(not(containsString("Public test stop"))));
+        mvc.perform(https(get("/")).session(session)).andExpect(status().isOk())
                 .andExpect(content().string(containsString("Public test stop")));
-        mvc.perform(https(post("/forget")).with(csrf())).andExpect(status().is3xxRedirection());
+        mvc.perform(https(post("/forget")).session(session).with(csrf())).andExpect(status().is3xxRedirection());
         assertEquals(0, saved.count());
     }
 }

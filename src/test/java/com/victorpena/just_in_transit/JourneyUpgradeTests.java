@@ -83,11 +83,11 @@ class JourneyUpgradeTests {
     }
     @Test void reportsAreOptInAndOnlyCreatedWhenFinishedWithConfirmedArrival() {
         var repo=mock(TripReportRepository.class);var history=new TripHistory(repo);
-        history.complete(started());verifyNoInteractions(repo);
+        history.complete(started(),"test-browser");verifyNoInteractions(repo);
         var f=form();var state=ActiveJourney.start(f,selected(),schedule(),LiveSnapshot.empty(),at("07:04"),true);
-        history.complete(state);verifyNoInteractions(repo);
+        history.complete(state,"test-browser");verifyNoInteractions(repo);
         for(String time:List.of("07:15","07:45","07:48","07:55","08:30","08:41"))state=ActiveJourney.advance(state,schedule(),LiveSnapshot.empty(),at(time));
-        history.complete(state);
+        history.complete(state,"test-browser");
         var capture=org.mockito.ArgumentCaptor.forClass(TripReport.class);verify(repo).save(capture.capture());
         var report=capture.getValue();assertEquals(at("07:04"),report.actualDeparture);assertEquals(at("08:41"),report.actualArrival);
         assertEquals(at("08:40"),report.plannedArrival);assertEquals("Made selected transfer (confirmed)",report.transferOutcome);

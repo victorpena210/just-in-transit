@@ -16,7 +16,7 @@ public class HomeController {
     private final ScheduleStore schedules;
     private final RealtimeStore realtime;
     private final CommutePlanner planner;
-    private final CommuteRepository saved;
+    private final BrowserCommuteStore saved;
     private final AlertStore alerts;
     private final MapService maps;
     private final JourneySession journeys;
@@ -24,10 +24,12 @@ public class HomeController {
     private final AccessSettings access;
     private final JourneyRecovery recovery;
     private final TripHistory history;
+    @org.springframework.beans.factory.annotation.Autowired private BrowserIdentity browser;
+    @org.springframework.beans.factory.annotation.Autowired private CommuteNotifications notifications;
     @org.springframework.beans.factory.annotation.Value("${maps.tile-url:https://tile.openstreetmap.org/{z}/{x}/{y}.png}")
     private String tileUrl;
     @org.springframework.beans.factory.annotation.Value("${maps.tile-credit:}") private String tileCredit;
-    public HomeController(ScheduleStore schedules,RealtimeStore realtime,CommutePlanner planner,CommuteRepository saved,AlertStore alerts,MapService maps,JourneySession journeys,Clock clock,AccessSettings access,JourneyRecovery recovery,TripHistory history) {
+    public HomeController(ScheduleStore schedules,RealtimeStore realtime,CommutePlanner planner,BrowserCommuteStore saved,AlertStore alerts,MapService maps,JourneySession journeys,Clock clock,AccessSettings access,JourneyRecovery recovery,TripHistory history) {
         this.schedules=schedules;this.realtime=realtime;this.planner=planner;this.saved=saved;this.alerts=alerts;this.maps=maps;this.journeys=journeys;this.clock=clock;this.access=access;this.recovery=recovery;this.history=history;
     }
     @GetMapping("/") public String home(Model model,jakarta.servlet.http.HttpServletRequest request,@RequestParam(defaultValue="") String corridor) {
@@ -41,6 +43,7 @@ public class HomeController {
             return render(justSaved,model,true);
         }
         model.addAttribute("resumeJourney",recovery.load(request,clock.instant()));
+        if(model.asMap().get("commute") instanceof CommuteForm submitted)return render(submitted,model,true);
         LocalDate day=LocalDate.now(clock.withZone(ZONE));
         var last=journeys.lastForm();
         String key=corridor.isBlank()?(last==null?"work":last.corridor()):corridor;
@@ -57,13 +60,16 @@ public class HomeController {
     }
     @PostMapping("/plan") public String plan(@Valid @ModelAttribute("commute") CommuteForm form,BindingResult errors,Model model) {
         if(journeys.current(clock.instant())!=null)return "redirect:/";
+        notifications.stop(browser.id());
         validateStops(form,errors);
         return render(form,model,!errors.hasErrors());
     }
     @PostMapping("/save") public String save(@Valid @ModelAttribute("commute") CommuteForm form,BindingResult errors,Model model,RedirectAttributes flash) {
         if(journeys.current(clock.instant())!=null)return "redirect:/";
+        notifications.stop(browser.id());
         validateStops(form,errors);
         if(!errors.hasErrors()) {
+            journeys.remember(form);
             try {
                 saved.saveAndFlush(SavedCommute.from(form));
             } catch(org.springframework.dao.DataAccessException ex) {
@@ -88,6 +94,7 @@ public class HomeController {
     }
     @PostMapping("/daily") public String daily(@Valid @ModelAttribute("daily") DailyForm daily,BindingResult dailyErrors,Model model,RedirectAttributes flash,@RequestParam(defaultValue="false") boolean refreshTrips) {
         if(journeys.current(clock.instant())!=null)return "redirect:/";
+        notifications.stop(browser.id());
         var commute=saved.findById(Corridor.of(daily.corridor()).savedId()).orElse(null);
         if(commute==null || dailyErrors.hasErrors()) { flash.addFlashAttribute("notice",commute==null?"Save your commute first.":"Choose a valid travel date and clock-in time.");return "redirect:/"; }
         var form=commute.form(daily.date()).withTime(daily.date(),daily.arriveBy(),daily.planMode(),daily.startMode(),daily.firstTrip());
@@ -98,27 +105,27 @@ public class HomeController {
         return render(form,model,!errors.hasErrors());
     }
     @PostMapping("/forget") public String forget(@RequestParam(defaultValue="work") String corridor,jakarta.servlet.http.HttpServletRequest request,jakarta.servlet.http.HttpServletResponse response) {
-        saved.deleteById(Corridor.of(corridor).savedId());maps.clearCache();journeys.clear();recovery.save(request,response,null,clock.instant());return "redirect:/?corridor="+Corridor.of(corridor).key();
+        notifications.stop(browser.id());saved.deleteById(Corridor.of(corridor).savedId());maps.clearCache();journeys.clear();recovery.save(request,response,null,clock.instant());return "redirect:/?corridor="+Corridor.of(corridor).key();
     }
     @GetMapping("/login") public String login() { return access.enabled()?"login":"redirect:/"; }
     @PostMapping("/journey/start") public String start(@RequestParam("token") String token,@RequestParam("option") int index,@RequestParam(defaultValue="false") boolean keepHistory,RedirectAttributes flash,jakarta.servlet.http.HttpServletRequest request,jakarta.servlet.http.HttpServletResponse response) {
-        try { journeys.start(token,index,schedules.get(),realtime.get(),clock.instant(),keepHistory);recovery.save(request,response,journeys.current(clock.instant()),clock.instant()); }
+        try { journeys.start(token,index,schedules.get(),realtime.get(),clock.instant(),keepHistory);recovery.save(request,response,journeys.current(clock.instant()),clock.instant());notifications.update(browser.id(),journeys.current(clock.instant())); }
         catch(IllegalArgumentException e) { flash.addFlashAttribute("notice",e.getMessage()); }
         return "redirect:/";
     }
     @PostMapping("/journey/action") public String progress(@RequestParam("revision") String revision,@RequestParam("action") String action,RedirectAttributes flash,jakarta.servlet.http.HttpServletRequest request,jakarta.servlet.http.HttpServletResponse response) {
         try {
             var before=journeys.current(clock.instant());
-            if(before!=null && before.revision().equals(revision) && "end".equals(action))history.complete(before);
-            journeys.act(revision,action,schedules.get(),realtime.get(),clock.instant());recovery.save(request,response,journeys.current(clock.instant()),clock.instant()); }
+            if(before!=null && before.revision().equals(revision) && "end".equals(action))history.complete(before,browser.id());
+            journeys.act(revision,action,schedules.get(),realtime.get(),clock.instant());recovery.save(request,response,journeys.current(clock.instant()),clock.instant());notifications.update(browser.id(),journeys.current(clock.instant())); }
         catch(IllegalArgumentException e) { flash.addFlashAttribute("notice",e.getMessage()); }
         return "redirect:/";
     }
     @PostMapping("/journey/resume") public String resume(@RequestParam String action,RedirectAttributes flash,
         jakarta.servlet.http.HttpServletRequest request,jakarta.servlet.http.HttpServletResponse response) {
         try {
-            if("resume".equals(action))journeys.resume(recovery.load(request,clock.instant()),clock.instant());
-            else if("discard".equals(action))recovery.save(request,response,null,clock.instant());
+            if("resume".equals(action)) { journeys.resume(recovery.load(request,clock.instant()),clock.instant());notifications.update(browser.id(),journeys.current(clock.instant())); }
+            else if("discard".equals(action)) { recovery.save(request,response,null,clock.instant());notifications.stop(browser.id()); }
             else throw new IllegalArgumentException("Unknown recovery action.");
         } catch(IllegalArgumentException e) { flash.addFlashAttribute("notice",e.getMessage()); }
         return "redirect:/";
@@ -142,6 +149,15 @@ public class HomeController {
         }
     }
     private String render(CommuteForm form,Model model,boolean calculate) {
+        // Record constructor binding can leave a null-target BindingResult after a type mismatch.
+        // Keep the supplied form and its rejected values together so Thymeleaf can render errors.
+        var original=model.asMap().get(BindingResult.MODEL_KEY_PREFIX+"commute");
+        model.addAttribute("commute",form);
+        if(original instanceof BindingResult binding && binding.getTarget()!=form) {
+            var repaired=new org.springframework.validation.BeanPropertyBindingResult(form,"commute");
+            repaired.addAllErrors(binding);
+            model.addAttribute(BindingResult.MODEL_KEY_PREFIX+"commute",repaired);
+        }
         Schedule schedule=schedules.get();
         LiveSnapshot live=realtime.get();
         Instant now=clock.instant();

@@ -91,6 +91,7 @@ class LiveMapTests {
     @Test void previewTokensExpireAndDoNotLeakAcrossSessions() {
         var session=new JourneySession();var token=session.offer(form(),new Result(List.of(selected()),"Test"),at("07:00"));
         assertNotNull(session.mapChoice(token,0,at("07:01")));assertNull(session.mapChoice(token,-1,at("07:01")));
-        assertNull(session.mapChoice(token,0,at("07:21")));assertNull(new JourneySession().mapChoice(token,0,at("07:01")));
+        assertNotNull(session.mapChoice(token,0,at("07:21")));
+        assertNull(session.mapChoice(token,0,at("07:00").plusSeconds(18*3600+1)));assertNull(new JourneySession().mapChoice(token,0,at("07:01")));
     }
 }

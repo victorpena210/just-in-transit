@@ -6,6 +6,7 @@ import java.time.*;
 @Entity
 public class SavedCommute {
     @Id public Long id = 1L;
+    @Column(length=64) public String legacyOwner;
     @Column(length=200) public String origin;
     @Column(length=200) public String destination;
     public LocalTime arriveBy;

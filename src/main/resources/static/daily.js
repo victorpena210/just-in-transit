@@ -13,7 +13,7 @@
     if (event.target.closest('[data-edit-commute]') && $('edit-commute')) $('edit-commute').open = true;
   });
   if (!card) return;
-  let snapshot = null, received = 0, failed = false, dirty = false, pending = false;
+  let snapshot = null, received = 0, failed = false, dirty = false, pending = false, expired = false, changedForm = null;
   const token = card.dataset.token;
   const starts = () => document.querySelectorAll('.start-form button');
   const setText = (selector, value) => { for (const element of card.querySelectorAll(selector)) element.textContent = value; };
@@ -22,9 +22,9 @@
     const clock = snapshot?.countdowns.find(item => item.id === (card.dataset.startMode === 'stop' ? 'bus24' : card.dataset.startMode === 'onboard' ? 'transfer' : 'leave'));
     const stale = !clock || failed || dirty || now > Date.parse(clock.validUntil);
     if (stale || !clock.target) {
-      $('leave-heading').textContent = dirty ? 'Settings changed' : 'Departure estimate';
-      $('leave-countdown').textContent = dirty ? 'Update plan' : 'Unconfirmed';
-      $('leave-basis').textContent = dirty ? 'Submit your changes to find a new departure.' : 'Refresh the recommendation to check the current times.';
+      $('leave-heading').textContent = dirty ? 'Settings changed' : expired ? 'Plan expired or replaced' : 'Departure estimate';
+      $('leave-countdown').textContent = dirty || expired ? 'Update plan' : 'Unconfirmed';
+      $('leave-basis').textContent = dirty ? 'Submit your changes to find a new departure.' : expired ? 'Find fresh departures to restore this plan.' : 'Refresh the recommendation to check the current times.';
     } else {
       const seconds = Math.ceil((Date.parse(clock.target) - now) / 1000);
       const joining = card.dataset.startMode !== 'home';
@@ -33,6 +33,8 @@
       $('leave-countdown').textContent = seconds <= 0 ? (joining ? 'Check current bus' : seconds === 0 ? 'Leave now' : 'Choose your stage below') : seconds <= 60 ? (joining ? 'Under a minute' : 'Leave now') : minutes >= 60 ? `${Math.floor(minutes / 60)}h ${minutes % 60}m` : `${minutes} minutes`;
       $('leave-basis').textContent = clock.source;
     }
+    setText('[data-estimate-state]', dirty ? 'Settings changed. Times below belong to the previous plan.' : stale ? 'Displayed times are the last estimates; they are not currently confirmed.' : 'Checked ' + new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', hour: 'numeric', minute: '2-digit' }).format(new Date(snapshot.now)) + ' Central · estimates may change.');
+    if (expired) starts().forEach(button => button.disabled = true);
     // Starting always revalidates the selected buses on the server as well.
     card.querySelectorAll('.start-form button').forEach(button => button.disabled = stale || !clock?.target || now > Date.parse(clock.target));
   }
@@ -44,11 +46,13 @@
       if (!response.ok || response.redirected) throw new Error('Unavailable');
       const data = await response.json();
       if (dirty) return;
+      expired = Boolean(data.planExpired);
       if (!data.decision || !Array.isArray(data.countdowns) || !data.now) throw new Error('Plan expired');
       snapshot = data; received = performance.now(); failed = false;
       const d = data.decision;
       setText('[data-decision-leave]', d.leave);setText('[data-decision-work]', d.work);
-      setText('[data-decision-deadline]', d.deadline);setText('[data-decision-transfer]', `${d.transfer} min after the transfer walk`);
+      setText('[data-decision-deadline]', d.deadline);setText('[data-decision-transfer]', `${d.transfer} min waiting after the transfer walk`);
+      setText('[data-first-board]', d.firstBoard);setText('[data-transfer-arrival]', d.transferArrival);setText('[data-second-board]', d.secondBoard);setText('[data-first-wait]', d.firstWait);
       setText('[data-decision-backup]', d.backup);setText('[data-decision-confidence]', d.confidence);setText('.badge', d.rating);
       setText('[data-timing-board-first]',d.firstBoard);setText('[data-timing-off-first]',d.firstAlight);
       setText('[data-timing-board-second]',d.secondBoard);setText('[data-timing-off-second]',d.secondAlight);
@@ -62,13 +66,21 @@
     finally { pending = false; tick(); }
   }
   const refreshButton = document.createElement('button');refreshButton.type = 'button';refreshButton.className = 'text-button';
-  refreshButton.textContent = 'Refresh recommendation ↻';refreshButton.addEventListener('click', refresh);card.querySelector('.departure-decision').append(refreshButton);
+  refreshButton.textContent = 'Refresh recommendation ↻';refreshButton.addEventListener('click', () => expired ? replan() : refresh());card.querySelector('.departure-decision').append(refreshButton);
+  function replan() {
+    const form = changedForm || $('commute-form');
+    const submit = form?.id === 'daily-form' ? form.querySelector('button[type="submit"]:not([name="refreshTrips"])') : $('plan-button');
+    if (form && form.reportValidity()) form.requestSubmit(submit);
+  }
+  const newPlan = document.createElement('button');newPlan.type = 'button';newPlan.className = 'secondary';
+  newPlan.textContent = 'Find fresh departures';newPlan.addEventListener('click', replan);
+  card.querySelector('.departure-decision').append(newPlan);
   const invalidate = event => {
     if (event.target.closest('.stop-finder')) return;
-    dirty = true; starts().forEach(button => button.disabled = true); tick();
+    dirty = true; changedForm = event.target.closest('form') || $('commute-form'); starts().forEach(button => button.disabled = true); tick();
   };
   for (const id of ['commute-form', 'daily-form']) for (const type of ['input', 'change']) $(id)?.addEventListener(type, invalidate);
-  document.addEventListener('jit:point-resolved', () => { dirty = true; starts().forEach(button => button.disabled = true);tick(); });
+  document.addEventListener('jit:point-resolved', () => { dirty = true; changedForm = $('commute-form'); starts().forEach(button => button.disabled = true);tick(); });
   document.addEventListener('visibilitychange', () => { tick();if (!document.hidden) refresh(); });
   window.addEventListener('offline', () => { failed = true;tick(); });
   window.addEventListener('online', refresh);

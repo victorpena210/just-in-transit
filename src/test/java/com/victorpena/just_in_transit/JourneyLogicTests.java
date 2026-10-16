@@ -92,7 +92,7 @@ class JourneyLogicTests {
         String token=session.offer(form(),result,at("06:00"));
         assertThrows(IllegalArgumentException.class,()->session.start("wrong",0,schedule(),LiveSnapshot.empty(),at("06:01")));
         assertThrows(IllegalArgumentException.class,()->session.start(token,5,schedule(),LiveSnapshot.empty(),at("06:01")));
-        assertThrows(IllegalArgumentException.class,()->session.start(token,0,schedule(),LiveSnapshot.empty(),at("07:04")));
+        assertThrows(IllegalArgumentException.class,()->session.start(token,0,schedule(),LiveSnapshot.empty(),at("06:00").plusSeconds(18*3600+1)));
     }
     @Test void staleProgressPostCannotAdvanceTwice() {
         var session=new JourneySession();String token=session.offer(form(),new Result(List.of(selected()),""),at("07:00"));

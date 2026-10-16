@@ -10,11 +10,11 @@ import org.springframework.security.web.header.writers.StaticHeadersWriter;
 
 @Configuration
 public class SecurityConfig {
-    @Bean SecurityFilterChain security(HttpSecurity http,AccessSettings access) throws Exception {
+    @Bean SecurityFilterChain security(HttpSecurity http,AccessSettings access,CommuteNotifications notifications,BrowserIdentity browser) throws Exception {
         if(access.enabled()) {
-            http.authorizeHttpRequests(r->r.requestMatchers("/login","/app.css","/offline.html","/offline.js","/sw.js","/error").permitAll().anyRequest().authenticated())
+            http.authorizeHttpRequests(r->r.requestMatchers("/login","/app.css","/offline.html","/offline.js","/sw.js","/manifest.webmanifest","/icon.svg","/icon-192.png","/icon-512.png","/error").permitAll().anyRequest().authenticated())
                 .formLogin(f->f.loginPage("/login").defaultSuccessUrl("/",true).permitAll())
-                .logout(l->l.logoutSuccessUrl("/login?logout").invalidateHttpSession(true).deleteCookies("JSESSIONID","JIT_JOURNEY"));
+                .logout(l->l.addLogoutHandler((req,res,auth)->notifications.stop(browser.id())).logoutSuccessUrl("/login?logout").invalidateHttpSession(true).deleteCookies("JSESSIONID","JIT_JOURNEY"));
         } else {
             http.authorizeHttpRequests(r->r.anyRequest().permitAll()).formLogin(f->f.disable());
             if(access.publicAccess()) {
