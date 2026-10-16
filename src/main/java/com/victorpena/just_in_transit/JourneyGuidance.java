@@ -8,7 +8,14 @@ import java.util.*;
 public record JourneyGuidance(String status,String tone,String nextStep,String change,String backup,boolean canReplace) {
     public static JourneyGuidance from(ActiveJourney.View v,Schedule schedule,LiveSnapshot live,Instant now) {
         var state=v.state();var f=state.form();var o=v.option();
-        if(v.finished())return new JourneyGuidance("Arrived","comfortable","Finish your commute to save an opted-in report.","","",false);
+        if(v.finished())return new JourneyGuidance("Arrived","comfortable","Your opted-in report is saved. Finish when you are ready.","","",false);
+        if(state.ride()!=null && (state.phase()==ActiveJourney.Phase.ON_24 || state.phase()==ActiveJourney.Phase.ON_93)) {
+            var leg=state.phase()==ActiveJourney.Phase.ON_24?o.first():o.second();
+            String target=state.phase()==ActiveJourney.Phase.ON_24?"Martin & Leona":"your selected destination stop";
+            return new JourneyGuidance(leg.alight().usable()?"Following your bus":"On board · arrival unconfirmed",leg.alight().usable()?"comfortable":"uncertain",
+                leg.alight().usable()?"Your bus is estimated at "+target+" at "+leg.alight().display()+". Confirm when you get off.":"Your bus selection is saved. Check the destination with the driver; we are waiting for a fresh matching onward trip.",
+                "You confirmed vehicle "+state.ride().vehicleId()+". Earlier boarding times are not inferred from your location.","",false);
+        }
         boolean passed=!v.firstBoardDone() && !o.first().board().at().isAfter(now)
             || !v.firstDone() && !o.first().alight().at().isAfter(now)
             || !v.secondBoardDone() && !o.second().board().at().isAfter(now)

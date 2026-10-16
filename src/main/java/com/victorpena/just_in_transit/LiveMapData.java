@@ -35,6 +35,22 @@ public final class LiveMapData {
         }
         return List.copyOf(result);
     }
+    /** Both directions remain selectable, including a vehicle on its downtown turnaround. */
+    public static List<Bus> candidates(VehicleStore.Snapshot feed,Schedule schedule,Instant now) {
+        if(schedule==null || !recent(feed.timestamp(),now,600))return List.of();
+        Map<String,Trip> trips=new HashMap<>();schedule.trips().forEach(t->trips.put(t.id(),t));
+        var result=new ArrayList<Bus>();
+        for(var p:feed.positions()) {
+            var t=trips.get(p.tripId());
+            if(t==null || !Set.of("24","93").contains(t.route()) || !p.route().isBlank() && !p.route().equals(t.route()))continue;
+            Instant stamp=p.reportedAt()==null?feed.timestamp():p.reportedAt();
+            if(!recent(stamp,now,600))continue;
+            var day=RiderTracking.day(p);
+            boolean fresh=day!=null && schedule.active(t.service(),day) && RiderTracking.fresh(feed,p,now);
+            result.add(new Bus(p.id(),p.tripId(),t.route(),t.headsign(),p.lat(),p.lon(),p.reportedAt(),min(feed.timestamp().plusSeconds(90),stamp.plusSeconds(90)),fresh,false));
+        }
+        return List.copyOf(result);
+    }
     private static boolean serves(Trip trip,String from,String to) {
         boolean boarded=false;
         for(var s:trip.stops()) { if(boarded && s.id().equals(to) && s.dropoff())return true;

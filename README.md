@@ -4,9 +4,22 @@ A San Antonio commute assistant with guided 24 → 93 / 93 → 24 trips and dire
 
 ## Current update — October 16, 2026
 
+### Bus confirmation and reliable trip saving
+
+- **Find my bus:** choose a vehicle on the map or enter its vehicle number, then confirm “I'm on this bus.” Either leg can be the starting point. Earlier steps remain unrecorded. Both route directions remain selectable, including a downtown loop; the driver-confirmed continuation flag is a rider note, not an arrival prediction.
+- Location suggestions use fresh bus reports, phone accuracy and repeated nearby movement. The rider confirms every match; location never advances a trip. A confirmed physical vehicle stays selected through trip-ID changes. Arrival is withheld until its fresh service instance has an upcoming, usable destination event.
+- Progress is committed atomically with its opt-in report and retry receipt. Reopening with the same browser credential restores the current trip automatically, even without the old session/recovery cookie. Stale tabs cannot overwrite newer progress. Active trips still expire after 18 hours; existing checkpoints remain readable.
+- While the page is open, updates persist in a browser-scoped local outbox before transmission. The page distinguishes **Waiting to sync**, **Saved**, and **Update needs review**. Reconnecting retries in order; repeated event IDs cannot advance twice. After an offline reload, the public offline page shows the last status; reconnect to resume editing/sync. No background GPS or cross-device sync is added.
+- History preference is remembered in this browser. Opted-in reports update during a trip and retain unfinished trips; boarding confirmations do not invent earlier departure or boarding times. Destination, selected vehicle and history can be corrected during a trip. **Save timing as my defaults** explicitly persists daily timing preferences.
+
+Deployment: rebuild and restart the existing application. The current schema update adds an optimistic-lock version to `journey_checkpoint`, a nullable report status and the `journey_receipt` table. Keep the existing database; use the configured persistent MySQL database or a persistent volume for file-backed H2. Browser outboxes cannot recover deleted server databases or cleared browser storage. No hosting/database credentials or infrastructure settings are changed by this update.
+
+Validation: 229 Maven tests (228 passed, one optional captured-feed test skipped). A DOM integration check against a running Spring app verified lost-acknowledgement recovery, reload, duplicate retry, two ordered offline confirmations, reconnect, report saving and ending the trip. Browser rendering/mobile visual checks were blocked by the available browser environment; hosted deployment and MySQL migration were not verified.
+
+
 Read [UPDATE-GUIDE.md](UPDATE-GUIDE.md) for installation, restoration of existing data, deployment variables and limitations.
 
-- Arrival deadlines and first-stop/transfer wait windows now lead setup and the saved daily form. Daily changes do not overwrite usual saved preferences.
+- Arrival deadlines and first-stop/transfer wait windows now lead setup and the saved daily form. Daily changes remain temporary unless **Save timing as my defaults** is chosen.
 - Added a maximum early-arrival limit (15 minutes by default, increased only when needed to accommodate an existing arrival cushion plus delay allowance). Existing saves without this field adopt latest-departure ranking; stops and walking times are retained.
 - Latest departure is the default among trips meeting the arrival window, wait limits and traffic allowance. Too-early fallbacks are labeled with the exact shortfall instead of appearing as recommendations that meet preferences.
 - Other direct/one-transfer routes between the selected stops appear with the same arrival deadline and limits. Alternative-route comparisons do not start corridor tracking.

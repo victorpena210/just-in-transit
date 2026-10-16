@@ -85,6 +85,11 @@ public record CommuteForm(
             destinationStop,originStop,locationMode,originLat,originLon,destinationLat,destinationLon,resolvedOrigin,resolvedDestination,
             corridor,planMode,startMode,firstTrip,firstMax,transferMax,trafficAllowance,preference,maxEarlyArrival);
     }
+    public CommuteForm withDestination(String stop,String label,int walk) {
+        return new CommuteForm(origin,label,date,arriveBy,walkToStop,transferWalk,walk,boardingBuffer,transferBuffer,arrivalBuffer,
+            stop,originStop,usesAddress("origin")?"origin":"manual",originLat,originLon,null,null,resolvedOrigin,null,
+            corridor,planMode,startMode,firstTrip,maxBoardingWait,maxTransferWait,trafficAllowance,preference,maxEarlyArrival);
+    }
     public String arrivalWindowLabel() {
         if(departing())return "Leave after your selected time; no arrival window set.";
         if(date==null || arriveBy==null || arrivalBuffer==null)return "Choose your arrival deadline and early-arrival limits.";

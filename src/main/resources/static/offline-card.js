@@ -25,7 +25,7 @@
   document.addEventListener('submit', event => {
     const form = event.target, path = new URL(form.getAttribute('action') || location.href, location.href).pathname;
     const action = event.submitter?.value || new FormData(form).get('action');
-    if (path === '/logout' || path === '/forget' || path === '/journey/action' && action === 'end' || path === '/journey/resume' && action === 'discard') clear();
+    if (path === '/logout' || path === '/forget' || path === '/journey/resume' && action === 'discard') { clear();try { localStorage.removeItem('jit-trip-view-v1'); } catch (_) {} }
   });
   window.addEventListener('storage', event => { if (event.key === PREF) { generation++;enabled = event.newValue === 'yes';if (toggle) toggle.checked = enabled; } });
   window.addEventListener('online', save);document.addEventListener('visibilitychange', () => { if (!document.hidden) save(); });

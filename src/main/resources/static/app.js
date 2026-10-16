@@ -11,7 +11,7 @@
   });
   const refreshed = Date.now();
   function refresh() {
-    if (document.hidden || !toggle.checked) return;
+    if (document.hidden || !toggle.checked || window.JitTrip?.hasPending()) return;
     if (!navigator.onLine) { status.textContent = 'Offline. These times may be out of date. Your journey is kept in this session.'; return; }
     if (Date.now() - refreshed < 25000) return;
     const focused = document.activeElement;

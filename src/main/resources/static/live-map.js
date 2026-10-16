@@ -48,9 +48,12 @@
     if (!fitOnce && !pinKind && !locationWanted && data?.stops.length) { fitOnce = true; fitStops(); }
   }
   let lastBusKey = '';
+  let choosingBus = false;
+  const matchSamples = new Map();
   function drawBuses() {
-    const now = serverNow(), buses = (data?.buses || []).filter(b => now <= Date.parse(b.validUntil) + 510000);
+    const now = serverNow(), buses = (choosingBus ? data?.candidates || [] : data?.buses || []).filter(b => now <= Date.parse(b.validUntil) + 510000);
     const key = JSON.stringify(buses) + buses.map(b => !failed && b.fresh && now <= Date.parse(b.validUntil)).join(',') + failed;
+    renderBusChoices();
     if (key === lastBusKey) return;
     lastBusKey = key; busesLayer?.clearLayers(); $('map-bus-list').replaceChildren();
     let liveCount = 0, selectedCount = 0;
@@ -62,13 +65,67 @@
       if (map) {
         const badge = textNode('span', (bus.selected ? '★ ' : '') + bus.route);
         const icon = L.divIcon({ html: badge, className: `map-bus ${live ? '' : 'stale'} ${bus.selected ? 'selected' : ''}`, iconSize: [48, 32], iconAnchor: [24, 16] });
-        L.marker([bus.lat, bus.lon], { icon, title: description }).bindPopup(textNode('div', description)).addTo(busesLayer);
+        const popup = textNode('div', description);
+        const choose = textNode('button', `I'm on this ${bus.route}`, 'lookup-button'); choose.type = 'button'; choose.addEventListener('click', () => selectBus(bus)); popup.append(choose);
+        L.marker([bus.lat, bus.lon], { icon, title: description }).bindPopup(popup).addTo(busesLayer);
       }
     }
     if (!buses.length) $('map-bus-list').append(textNode('li', 'No matching bus positions available. Missing positions do not mean no buses are running.'));
     $('map-feed-status').textContent = failed ? 'Could not refresh. Markers and countdowns are unconfirmed. Try Refresh buses.' :
       `${liveCount} fresh bus reports · ${buses.length - liveCount} unconfirmed. ${data?.vehicleStatus || ''} ${token || active ? (selectedCount ? '★ matches the trip and service date in your plan.' : 'No position matched your selected trip and service date; countdowns can still use arrival data.') : 'Shows buses serving the selected stops in the supported direction.'}`;
   }
+  function distance(a, b) {
+    const rad = Math.PI / 180, x = (b.lat - a.lat) * rad, y = (b.lon - a.lon) * rad;
+    const h = Math.sin(x / 2) ** 2 + Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin(y / 2) ** 2;
+    return 6371000 * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+  }
+  function sampleMatches(point) {
+    for (const bus of data?.candidates || []) {
+      if (!bus.fresh || failed || Date.now() - point.time > 30000 || point.accuracy > 100 || serverNow() > Date.parse(bus.validUntil)) continue;
+      const close = distance(point, bus) <= Math.max(60, point.accuracy + 50), prior = matchSamples.get(bus.id);
+      if (!close) { matchSamples.delete(bus.id); continue; }
+      if (!prior || point.time - prior.last > 45000) matchSamples.set(bus.id, { first: point.time, last: point.time, count: 1, bus, point, moved: false });
+      else if (point.time - prior.last >= 5000) {
+        const moved = distance(prior.point, point) > 20 && distance(prior.bus, bus) > 20;
+        const ua = { lat: point.lat - prior.point.lat, lon: point.lon - prior.point.lon };
+        const ba = { lat: bus.lat - prior.bus.lat, lon: bus.lon - prior.bus.lon };
+        const sameDirection = ua.lat * ba.lat + ua.lon * ba.lon > 0;
+        matchSamples.set(bus.id, { first: prior.first, last: point.time, count: prior.count + 1, bus, point, moved: prior.moved || moved && sameDirection });
+      }
+    }
+  }
+  function selectBus(bus) {
+    if (document.getElementById('bus-picker')?.dataset.enabled !== 'true') { $('bus-match-status').textContent = 'Save your commute or find a departure first, then select your actual bus.'; return; }
+    $('bus-route-filter').value = bus.route; $('manual-bus-number').value = bus.id;
+    $('bus-match-status').textContent = `Selected vehicle ${bus.id} · ${bus.headsign}. Check the number and destination, then confirm below.`;
+    $('manual-bus-form').scrollIntoView({ behavior: 'smooth', block: 'center' }); $('manual-bus-number').focus();
+  }
+  function renderBusChoices() {
+    const container = $('bus-candidates'); if (!container || document.activeElement?.closest('#bus-candidates')) return;
+    container.replaceChildren();
+    const point = userPoint && Date.now() - userPoint.time <= 30000 && userPoint.accuracy <= 100 ? userPoint : null;
+    const route = $('bus-route-filter').value;
+    const candidates = (data?.candidates || []).filter(b => b.route === route).map(b => ({ ...b, distance: point ? distance(point, b) : Infinity }))
+      .sort((a, b) => a.distance - b.distance || a.id.localeCompare(b.id)).slice(0, 5);
+    for (const bus of candidates) {
+      const row = textNode('div', '', 'bus-choice'), sample = matchSamples.get(bus.id);
+      const fresh = !failed && bus.fresh && serverNow() <= Date.parse(bus.validUntil);
+      const suggested = point && fresh && sample && sample.count >= 3 && sample.last - sample.first >= 15000 && sample.moved && Date.now() - sample.last < 30000 && bus.distance <= Math.max(60, point.accuracy + 50);
+      row.append(textNode('strong', `${bus.route} · Vehicle ${bus.id}`), textNode('p', bus.headsign));
+      row.append(textNode('small', `${suggested ? 'Possible match · moving near you · ' : ''}${point ? Math.round(bus.distance) + ' m from your dot · ' : ''}${fresh ? 'Reported ' : 'Location unconfirmed · '}${stamp(bus.reportedAt)}`));
+      const button = textNode('button', 'Select this bus', 'lookup-button'); button.type = 'button'; button.addEventListener('click', () => selectBus(bus)); row.append(button); container.append(row);
+    }
+    if (!candidates.length) container.append(textNode('p', 'No matching vehicle reports. You can enter your bus number below; arrival will stay unconfirmed until a fresh match is available.'));
+  }
+  function findMyBus() { choosingBus = true; lastBusKey = ''; locate(); refresh(); renderBusChoices(); }
+  $('find-my-bus')?.addEventListener('click', findMyBus);
+  document.addEventListener('click', event => { if (!event.target.closest('[data-find-my-bus]')) return; choosingBus = true; lastBusKey = ''; openMap(); refresh(); });
+  $('bus-route-filter')?.addEventListener('change', () => { choosingBus = true; lastBusKey = ''; drawBuses(); });
+  $('manual-bus-form')?.addEventListener('submit', event => {
+    event.preventDefault();
+    if ($('bus-picker').dataset.enabled !== 'true') { $('bus-match-status').textContent = 'Save your commute or find a departure first.'; return; }
+    window.JitTrip?.selectBus($('bus-route-filter').value, $('manual-bus-number').value.trim(), $('bus-driver-confirmed').checked, $('bus-keep-history').checked);
+  });
   function renderClocks() {
     const container = $('map-countdowns'); container.replaceChildren();
     for (const c of data?.countdowns || []) {
@@ -102,12 +159,14 @@
     }
   }
   async function refreshJourney() {
-    if (!active || document.activeElement?.closest('#active-journey form')) return;
+    if (!active || window.JitTrip?.hasPending() || document.activeElement?.closest('#active-journey form')) return;
     const current = $('journey-refresh');
     if (current && !current.checked) return;
     const response = await fetch('/', { credentials: 'same-origin', cache: 'no-store', signal: AbortSignal.timeout(30000) });
     if (!response.ok || response.redirected) throw new Error("Journey update unavailable");
     const html = new DOMParser().parseFromString(await response.text(), 'text/html');
+    if (window.JitTrip?.hasPending()) return;
+    window.JitTrip?.hydrate(html.getElementById('trip-sync-root'));
     const next = html.getElementById('active-journey');
     if (next && $('active-journey')) $('active-journey').replaceWith(next);
     else if (!next) window.location.replace('/');
@@ -127,8 +186,8 @@
       if (version !== generation) return;
       if (!result.now || !Array.isArray(result.countdowns) || !Array.isArray(result.buses)) throw new Error('Invalid map update');
       data = result; received = performance.now(); failed = false;
-      if (active && !result.active) { window.location.replace('/'); return; }
-      if (!active && result.active) { window.location.replace('/'); return; }
+      if (!window.JitTrip?.hasPending() && active && !result.active) { window.location.replace('/'); return; }
+      if (!window.JitTrip?.hasPending() && !active && result.active) { window.location.replace('/'); return; }
       $('map-plan-status').textContent = result.message;
       $('map-walk-note').textContent = result.walkMinutes == null ? '' : `${!result.active || result.phase === 'WALKING_TO_24' ? result.walkMinutes + ' min entered walk to the ' + result.firstRoute + '. ' : ''}Countdown uses your selected walking times and buffers; the blue dot does not recalculate your plan.`;
       drawStops(); renderClocks(); await refreshJourney();
@@ -153,6 +212,7 @@
       const p = { lat: position.coords.latitude, lon: position.coords.longitude, accuracy: position.coords.accuracy, time: position.timestamp };
       if (!Number.isFinite(p.lat) || !Number.isFinite(p.lon) || !Number.isFinite(p.accuracy) || p.accuracy < 0 || !Number.isFinite(p.time)) return;
       userPoint = p;
+      sampleMatches(p);
       if (map) {
         userLayer.clearLayers(); L.circle([p.lat, p.lon], { radius: p.accuracy, color: '#2269c3', weight: 1, fillOpacity: .12 }).addTo(userLayer);
         L.circleMarker([p.lat, p.lon], { radius: 7, color: '#fff', weight: 3, fillColor: '#2269c3', fillOpacity: 1 }).bindPopup(textNode('span', 'You · accuracy about ' + Math.round(p.accuracy) + ' m')).addTo(userLayer);

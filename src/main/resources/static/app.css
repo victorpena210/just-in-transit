@@ -124,3 +124,19 @@ body:not(.commute-ready) .journey-column,.journey-column{grid-area:journey;min-w
 
 .timing-preferences .field-pair>div,.daily-commute .field-pair>div{display:flex;flex-direction:column}.timing-preferences .field-pair input,.daily-commute .field-pair input{margin-top:auto}
 @media(max-width:740px){.topbar{gap:12px}.brand{white-space:nowrap;font-size:18px;flex-shrink:0}.brand-icon{width:30px;height:32px;margin-right:0}.header-actions{gap:8px}.header-actions a{font-size:12px}}
+
+/* Current trip, durable save feedback and rider-selected buses. */
+.trip-save-panel { margin: 0 0 18px; padding: 14px 18px; border: 1px solid #b8d2c3; border-radius: 12px; background: #edf7ef; }
+.trip-save-panel p { margin: 4px 0; }
+.trip-save-panel.save-warning { background: #fff4df; border-color: #d7b779; }
+.bus-picker { border-bottom: 1px solid #cbd4ce; padding-bottom: 22px; margin-bottom: 22px; }
+.bus-candidates { display: grid; gap: 10px; margin: 14px 0; }
+.bus-choice { padding: 12px; border: 1px solid #ccd5cf; border-radius: 10px; background: #f8faf7; }
+.bus-choice p { margin: 3px 0; }
+.bus-choice small { display: block; margin-bottom: 8px; }
+#manual-bus-form { display: grid; gap: 10px; }
+#manual-bus-form label { display: block; }
+#manual-bus-form input[type=checkbox], .trip-corrections input[type=checkbox] { width: auto; }
+.ride-status { padding: 12px; background: #edf3f8; border-left: 3px solid #3b6a8c; }
+.trip-corrections { margin: 16px 0; }
+.trip-corrections form { display: grid; gap: 8px; margin: 12px 0; }

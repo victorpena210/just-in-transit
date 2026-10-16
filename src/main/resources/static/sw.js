@@ -1,5 +1,5 @@
 /* Cache only the public offline shell. Never cache authenticated HTML, API replies, CSRF tokens or maps. */
-const CACHE = 'jit-offline-shell-v1';
+const CACHE = 'jit-offline-shell-v2';
 const SHELL = ['/offline.html', '/offline.js', '/app.css'];
 self.addEventListener('install', event => event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(SHELL)).then(() => self.skipWaiting())));
 self.addEventListener('activate', event => event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(key => key.startsWith('jit-offline-shell-') && key !== CACHE).map(key => caches.delete(key)))).then(() => self.clients.claim())));

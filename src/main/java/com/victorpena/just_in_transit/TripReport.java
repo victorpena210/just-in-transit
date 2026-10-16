@@ -10,6 +10,7 @@ public class TripReport {
     @Id public String id;
     @Column(length=64) public String owner;
     public String corridor;
+    public String status;
     public LocalDate travelDate;
     public Instant plannedDeparture,actualDeparture,plannedArrival,actualArrival;
     public String transferOutcome;

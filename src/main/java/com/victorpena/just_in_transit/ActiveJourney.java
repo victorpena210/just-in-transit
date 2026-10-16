@@ -29,11 +29,15 @@ public final class ActiveJourney {
             return new Facts(id,plannedDeparture,plannedArrival,keepHistory,updated,predictions,predictionSources);
         }
     }
+    public record Ride(String vehicleId,String route,Instant confirmedAt,boolean driverConfirmed) { }
     public record State(String revision,CommuteForm form,Option option,Phase phase,Instant started,
-                        Instant changed,Set<String> missed,boolean needs93,boolean needs24,Facts facts,State previous) {
+                        Instant changed,Set<String> missed,boolean needs93,boolean needs24,Facts facts,State previous,Ride ride) {
         public State {
             missed=missed==null?Set.of():Set.copyOf(missed);
             if(facts==null)facts=new Facts(UUID.randomUUID().toString(),null,option.atWork(),false,Map.of());
+        }
+        public State(String revision,CommuteForm form,Option option,Phase phase,Instant started,Instant changed,Set<String> missed,boolean needs93,boolean needs24,Facts facts,State previous) {
+            this(revision,form,option,phase,started,changed,missed,needs93,needs24,facts,previous,null);
         }
         public State(String revision,CommuteForm form,Option option,Phase phase,Instant started,Instant changed,Set<String> missed,boolean needs93,boolean needs24) {
             this(revision,form,option,phase,started,changed,missed,needs93,needs24,null,null);
@@ -43,19 +47,19 @@ public final class ActiveJourney {
         }
         public boolean expired(Instant now) { return !now.isBefore(started.plus(Duration.ofHours(18))); }
         public String label() { return routeText(form,phase.label()); }
-        State snapshot() { return new State(revision,form,option,phase,started,changed,missed,needs93,needs24,facts,null); }
+        State snapshot() { return new State(revision,form,option,phase,started,changed,missed,needs93,needs24,facts,null,ride); }
     }
     private static String routeText(CommuteForm f,String text) {
         return text.replace("24","{first}").replace("93","{second}").replace("{first}",f.route().firstRoute()).replace("{second}",f.route().secondRoute());
     }
     private static State changed(State old,Option option,Phase phase,Instant now,Set<String> missed,boolean needsSecond,boolean needsFirst,String event) {
         return new State(UUID.randomUUID().toString(),old.form(),option,phase,old.started(),now,missed,needsSecond,needsFirst,
-            event==null?old.facts():old.facts().confirm(event,now),old.snapshot());
+            event==null?old.facts():old.facts().confirm(event,now),old.snapshot(),phase==Phase.ON_24 || phase==Phase.ON_93?old.ride():null);
     }
     public static State undo(State state,Instant now) {
         if(state.previous()==null)throw new IllegalArgumentException("There is no previous step to undo.");
         var old=state.previous();
-        return new State(UUID.randomUUID().toString(),old.form(),old.option(),old.phase(),old.started(),old.changed(),old.missed(),old.needs93(),old.needs24(),old.facts(),null);
+        return new State(UUID.randomUUID().toString(),old.form(),old.option(),old.phase(),old.started(),old.changed(),old.missed(),old.needs93(),old.needs24(),old.facts(),null,old.ride());
     }
     public record View(State state,Option option,List<String> warnings,String deadlineLabel) {
         public String phaseLabel() { return state.label(); }
@@ -76,7 +80,7 @@ public final class ActiveJourney {
                 && (firstDone() || option.first().board().usable() && option.first().alight().usable());
         }
         public boolean canAdvance() {
-            if(finished() || state.needs93() || state.needs24())return false;
+            if(finished() || state.needs24() || state.needs93() && state.phase()==Phase.WAITING_FOR_93)return false;
             // Do not invite boarding a trip known to be canceled or to skip this stop.
             if(!firstBoardDone())return option.first().board().usable();
             if(state.phase()==Phase.WAITING_FOR_93)return option.second().board().usable();
@@ -112,8 +116,8 @@ public final class ActiveJourney {
         var f=state.form();var phase=state.phase();
         boolean on24=phase.ordinal()>=Phase.ON_24.ordinal(),off24=phase.ordinal()>=Phase.TRANSFERRING.ordinal();
         boolean on93=phase.ordinal()>=Phase.ON_93.ordinal(),off93=phase.ordinal()>=Phase.WALKING_TO_DESTINATION.ordinal();
-        Leg first=refreshLeg(state.option().first(),schedule,live,f.originStop(),f.route().transferOff(),on24,off24,now);
-        Leg second=refreshLeg(state.option().second(),schedule,live,f.route().transferOn(),f.destinationStop(),on93,off93,now);
+        Leg first=state.ride()!=null && phase==Phase.ON_24?state.option().first():refreshLeg(state.option().first(),schedule,live,f.originStop(),f.route().transferOff(),on24,off24,now);
+        Leg second=state.ride()!=null && phase==Phase.ON_93?state.option().second():refreshLeg(state.option().second(),schedule,live,f.route().transferOn(),f.destinationStop(),on93,off93,now);
         Instant ready=off24?phase==Phase.TRANSFERRING?later(now,state.changed().plusSeconds(f.transferWalk()*60L)):now
             :later(now,first.alight().at()).plusSeconds(f.transferWalk()*60L);
         Option updated=option(f,first,second,state.option().leaveHome(),ready);
@@ -135,7 +139,7 @@ public final class ActiveJourney {
         if(!off93 && !state.needs93() && !state.needs24() && !second.alight().directPrediction())warnings.add("Destination arrival includes a scheduled or inferred bus estimate; it is not a confirmed arrival time.");
         if(!off93 && now.isAfter(second.alight().at()) && !state.needs93())warnings.add("The 93's arrival estimate has passed. Confirm your progress; this remaining estimate may be out of date.");
         if(phase==Phase.WALKING_TO_DESTINATION && now.isAfter(updated.atWork()))warnings.add("Your walking estimate has passed. Mark arrived when you reach your destination.");
-        if(phase!=Phase.ARRIVED && !f.departing() && CommuteTiming.arrivalSeconds(f,updated)>f.maxEarlyArrival()*60L)
+        if(second.alight().usable() && phase!=Phase.ARRIVED && !f.departing() && CommuteTiming.arrivalSeconds(f,updated)>f.maxEarlyArrival()*60L)
             warnings.add("Your current arrival estimate is earlier than your preferred arrival window. Your selected buses are unchanged.");
         Instant atWork=phase==Phase.ARRIVED?state.changed():updated.atWork();
         long seconds=Duration.between(atWork,f.date().atTime(f.arriveBy()).atZone(ZONE).toInstant()).getSeconds();
@@ -153,7 +157,7 @@ public final class ActiveJourney {
         if(next==Phase.ON_93)second=new Leg(second.route(),second.tripId(),confirmed,second.alight(),second.serviceDate());
         if(next==Phase.WALKING_TO_DESTINATION)second=new Leg(second.route(),second.tripId(),second.board(),confirmed,second.serviceDate());
         var captured=option(state.form(),first,second,o.leaveHome(),first.alight().at().plusSeconds(state.form().transferWalk()*60L));
-        return changed(state,captured,next,now,state.missed(),false,false,next.name());
+        return changed(state,captured,next,now,state.missed(),state.needs93() && next.ordinal()<Phase.ON_93.ordinal(),false,next.name());
     }
     public static State at24(State state,Instant now) {
         if(state.phase()!=Phase.WALKING_TO_24)throw new IllegalArgumentException("Your current step is no longer the walk to the first bus.");
@@ -186,7 +190,7 @@ public final class ActiveJourney {
         if(!v.firstBoardDone() || v.secondBoardDone())throw new IllegalArgumentException("A replacement transfer can be chosen while on the first bus or at the transfer.");
         var next=JourneyGuidance.alternative(v,schedule,live,now);
         if(next==null)throw new IllegalArgumentException("No usable alternative remains. Your current trip is kept; check again.");
-        return new State(UUID.randomUUID().toString(),state.form(),next,state.phase(),state.started(),state.changed(),state.missed(),false,false,state.facts(),state.snapshot());
+        return new State(UUID.randomUUID().toString(),state.form(),next,state.phase(),state.started(),state.changed(),state.missed(),false,false,state.facts(),state.snapshot(),state.ride());
     }
     private static String key(Leg leg) { return leg.tripId()+"@"+leg.serviceDate(); }
     /** Refresh the same offered buses without replanning or starting a journey. */

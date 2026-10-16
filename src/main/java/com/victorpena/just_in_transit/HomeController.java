@@ -20,6 +20,8 @@ public class HomeController {
     private final AlertStore alerts;
     private final MapService maps;
     private final JourneySession journeys;
+    @org.springframework.beans.factory.annotation.Autowired private JourneyActions journeyActions;
+    @org.springframework.beans.factory.annotation.Autowired private RiderTracking riderTracking;
     private final Clock clock;
     private final AccessSettings access;
     private final JourneyRecovery recovery;
@@ -101,7 +103,7 @@ public class HomeController {
                             @jakarta.validation.constraints.Min(1) @jakarta.validation.constraints.Max(120) Integer maxTransferWait) {
         public DailyForm { if(corridor==null)corridor="work";if(planMode==null)planMode="arrive";if(startMode==null)startMode="home";if(firstTrip==null)firstTrip=""; }
     }
-    @PostMapping("/daily") public String daily(@Valid @ModelAttribute("daily") DailyForm daily,BindingResult dailyErrors,Model model,RedirectAttributes flash,@RequestParam(defaultValue="false") boolean refreshTrips) {
+    @PostMapping("/daily") public String daily(@Valid @ModelAttribute("daily") DailyForm daily,BindingResult dailyErrors,Model model,RedirectAttributes flash,@RequestParam(defaultValue="false") boolean refreshTrips,@RequestParam(defaultValue="false") boolean saveDefaults) {
         if(journeys.current(clock.instant())!=null)return "redirect:/";
         notifications.stop(browser.id());
         var commute=saved.findById(Corridor.of(daily.corridor()).savedId()).orElse(null);
@@ -115,7 +117,11 @@ public class HomeController {
         for(var violation:validator.validate(form))errors.reject("preferences",violation.getMessage());
         validateStops(form,errors);
         model.addAttribute("commute",form);model.addAttribute(BindingResult.MODEL_KEY_PREFIX+"commute",errors);
-        // Today's deadline does not overwrite the saved usual clock-in time.
+        if(saveDefaults && !errors.hasErrors()) {
+            saved.saveAndFlush(SavedCommute.from(form.withJourney("home","")));
+            model.addAttribute("notice","Your usual timing and wait preferences are saved.");
+        }
+        // Today's deadline stays temporary unless Save timing as my defaults is explicitly chosen.
         return render(form,model,!errors.hasErrors());
     }
     @PostMapping("/forget") public String forget(@RequestParam(defaultValue="work") String corridor,jakarta.servlet.http.HttpServletRequest request,jakarta.servlet.http.HttpServletResponse response) {
@@ -123,15 +129,15 @@ public class HomeController {
     }
     @GetMapping("/login") public String login() { return access.enabled()?"login":"redirect:/"; }
     @PostMapping("/journey/start") public String start(@RequestParam("token") String token,@RequestParam("option") int index,@RequestParam(defaultValue="false") boolean keepHistory,RedirectAttributes flash,jakarta.servlet.http.HttpServletRequest request,jakarta.servlet.http.HttpServletResponse response) {
-        try { journeys.start(token,index,schedules.get(),realtime.get(),clock.instant(),keepHistory);recovery.save(request,response,journeys.current(clock.instant()),clock.instant());notifications.update(browser.id(),journeys.current(clock.instant())); }
+        try { var state=journeys.proposeStart(token,index,schedules.get(),realtime.get(),clock.instant(),keepHistory);journeys.restore(journeyActions.start(request,response,state));updateReminders(); }
         catch(IllegalArgumentException e) { flash.addFlashAttribute("notice",e.getMessage()); }
         return "redirect:/";
     }
     @PostMapping("/journey/action") public String progress(@RequestParam("revision") String revision,@RequestParam("action") String action,RedirectAttributes flash,jakarta.servlet.http.HttpServletRequest request,jakarta.servlet.http.HttpServletResponse response) {
         try {
             var before=journeys.current(clock.instant());
-            if(before!=null && before.revision().equals(revision) && "end".equals(action))history.complete(before,browser.id());
-            journeys.act(revision,action,schedules.get(),realtime.get(),clock.instant());recovery.save(request,response,journeys.current(clock.instant()),clock.instant());notifications.update(browser.id(),journeys.current(clock.instant())); }
+            var update=new JourneyActions.Update(java.util.UUID.randomUUID().toString(),before==null?null:before.facts().id(),revision,action,clock.instant(),before==null?null:before.phase().name(),null,null,false,false,null,null,null);
+            var next=journeyActions.apply(request,response,update,journeys.lastForm());journeys.restore(next);updateReminders(); }
         catch(IllegalArgumentException e) { flash.addFlashAttribute("notice",e.getMessage()); }
         return "redirect:/";
     }
@@ -143,6 +149,10 @@ public class HomeController {
             else throw new IllegalArgumentException("Unknown recovery action.");
         } catch(IllegalArgumentException e) { flash.addFlashAttribute("notice",e.getMessage()); }
         return "redirect:/";
+    }
+    private void updateReminders() {
+        try { notifications.update(browser.id(),journeys.current(clock.instant())); }
+        catch(RuntimeException e) { org.slf4j.LoggerFactory.getLogger(getClass()).warn("Trip saved; optional reminders unavailable",e); }
     }
     private void validateStops(CommuteForm form,BindingResult errors) {
         if(errors.hasErrors())return;
@@ -178,6 +188,8 @@ public class HomeController {
         var active=journeys.current(now);
         var journey=active==null?null:ActiveJourney.view(active,schedule,live,now);
         model.addAttribute("journey",journey);
+        model.addAttribute("rideStatus",riderTracking.message(active,now));
+        model.addAttribute("browserScope",browser.id());
         model.addAttribute("guidance",journey==null?null:JourneyGuidance.from(journey,schedule,live,now));
         model.addAttribute("route",form.route());
         model.addAttribute("boardingChoices",planner.boardingChoices(form,schedule,live,now));
@@ -215,6 +227,7 @@ public class HomeController {
             || !form.departing() && form.preference().equals("latest") && otherBest.leave().isAfter(corridorBest.leaveHome()));
         model.addAttribute("headlineAlternative",highlightOther?otherBest:null);
         if(result!=null)model.addAttribute("planToken",journeys.offer(form,result,now));
+        model.addAttribute("canSelectBus",active!=null || journeys.lastForm()!=null || saved.existsById(form.route().savedId()));
         model.addAttribute("canStart",form.date()!=null && form.date().equals(now.atZone(ZONE).toLocalDate()));
         boolean invalid=model.asMap().get(BindingResult.MODEL_KEY_PREFIX+"commute") instanceof BindingResult binding && binding.hasErrors();
         model.addAttribute("editOpen",invalid || result==null && active==null && !saved.existsById(form.route().savedId()));

@@ -24,10 +24,12 @@ class JourneyWebTests {
     @org.springframework.test.context.bean.override.mockito.MockitoBean BrowserIdentity browser;
     @Autowired BrowserCommuteStore saved;
     @Autowired TripReportRepository reports;
+    @Autowired JourneyCheckpointRepository checkpoints;
+    @Autowired JourneyReceiptRepository receipts;
     @MockitoBean ScheduleStore schedules;
     @MockitoBean Clock clock;
     @BeforeEach void setup() { org.mockito.Mockito.when(browser.id()).thenReturn("test-browser");
-        saved.deleteAll();reports.deleteAll();var base=schedule();
+        saved.deleteAll();reports.deleteAll();checkpoints.deleteAll();receipts.deleteAll();var base=schedule();
         var stops=java.util.Map.of("81799",new TransitModels.Stop("81799","Houston & Mittman",29.425,-98.454),
             "76779",new TransitModels.Stop("76779","Martin & Leona",29.43,-98.502),
             "76773",new TransitModels.Stop("76773","Martin Opposite Leona",29.43,-98.502),
@@ -123,6 +125,12 @@ class JourneyWebTests {
         assertTrue(actual.isLocationResolved());assertEquals(LocalTime.of(9,0),saved.findById(1L).orElseThrow().arriveBy);
         mvc.perform(post("/daily").param("date","2026-10-12").param("arriveBy","08:35")).andExpect(status().isForbidden());
     }
+    @Test void dailyDefaultsPersistOnlyWhenExplicitlySaved() throws Exception {
+        saved.save(SavedCommute.from(form()));
+        mvc.perform(post("/daily").with(csrf()).param("date",DAY.toString()).param("arriveBy","08:45").param("saveDefaults","true"))
+            .andExpect(status().isOk()).andExpect(model().attribute("notice","Your usual timing and wait preferences are saved."));
+        assertEquals(LocalTime.of(8,45),saved.findById(1L).orElseThrow().arriveBy);
+    }
     @Test void dailyWaitsAndArrivalWindowCanBeChangedWithoutOverwritingSavedPreferences() throws Exception {
         var initial=form().withArrivalWindow(5,30);saved.save(SavedCommute.from(initial));
         var response=mvc.perform(post("/daily").with(csrf()).param("date",DAY.toString()).param("arriveBy","09:00")
@@ -143,9 +151,8 @@ class JourneyWebTests {
             .andExpect(redirectedUrl("/")).andReturn();
         var cookie=started.getResponse().getCookie(JourneyRecovery.COOKIE);assertNotNull(cookie);assertTrue(cookie.isHttpOnly());
         session.invalidate();
-        var home=mvc.perform(get("/").cookie(cookie)).andExpect(content().string(containsString("Resume your trip?"))).andReturn();
+        var home=mvc.perform(get("/").cookie(cookie)).andExpect(content().string(containsString("Walking to the 24"))).andReturn();
         var fresh=(MockHttpSession)home.getRequest().getSession(false);
-        mvc.perform(post("/journey/resume").session(fresh).cookie(cookie).with(csrf()).param("action","resume")).andExpect(redirectedUrl("/"));
         var view=(ActiveJourney.View)mvc.perform(get("/").session(fresh).cookie(cookie)).andReturn().getModelAndView().getModel().get("journey");
         assertNotNull(view);assertEquals("a",view.option().first().tripId());
         mvc.perform(post("/journey/action").session(fresh).cookie(cookie).with(csrf()).param("revision",view.state().revision()).param("action","end"))
@@ -157,7 +164,9 @@ class JourneyWebTests {
         when(clock.instant()).thenReturn(at("07:04"));
         var result=mvc.perform(post("/journey/start").session(session).with(csrf()).param("token",(String)plan.getModelAndView().getModel().get("planToken")).param("option","0")).andReturn();
         var cookie=result.getResponse().getCookie(JourneyRecovery.COOKIE);
-        mvc.perform(get("/")).andExpect(content().string(not(containsString("Resume your trip?"))));
+        when(browser.id()).thenReturn("other-browser");
+        mvc.perform(get("/").cookie(cookie)).andExpect(model().attribute("journey",nullValue()));
+        when(browser.id()).thenReturn("test-browser");
         when(clock.instant()).thenReturn(at("07:04").plus(Duration.ofHours(18)));
         mvc.perform(get("/").cookie(cookie)).andExpect(content().string(not(containsString("Resume your trip?"))));
         mvc.perform(post("/journey/resume").cookie(cookie).with(csrf()).param("action","resume"))
@@ -204,6 +213,7 @@ class JourneyWebTests {
         var session=(MockHttpSession)stopPlan.getRequest().getSession(false);
         mvc.perform(post("/journey/start").session(session).with(csrf()).param("option","0").param("token",(String)stopPlan.getModelAndView().getModel().get("planToken"))).andExpect(redirectedUrl("/"));
         mvc.perform(get("/").session(session)).andExpect(content().string(containsString("Waiting for the 24")));
+        when(browser.id()).thenReturn("other-browser");
         when(clock.instant()).thenReturn(at("07:20"));
         mvc.perform(plan().param("startMode","onboard")).andExpect(model().attributeHasFieldErrors("commute","firstTrip"));
         var onboard=mvc.perform(plan().param("startMode","onboard").param("firstTrip","a@"+DAY)).andExpect(status().isOk()).andReturn();
@@ -218,7 +228,7 @@ class JourneyWebTests {
         when(clock.instant()).thenReturn(at("07:15"));
         var progress=mvc.perform(post("/journey/action").session(session).with(csrf()).param("action","advance").param("revision",state.revision())).andReturn();
         var cookie=progress.getResponse().getCookie(JourneyRecovery.COOKIE);session.invalidate();
-        var restored=mvc.perform(post("/journey/resume").with(csrf()).cookie(cookie).param("action","resume")).andReturn();
+        var restored=mvc.perform(get("/").cookie(cookie)).andReturn();
         session=(MockHttpSession)restored.getRequest().getSession(false);
         var view=(ActiveJourney.View)mvc.perform(get("/").session(session)).andReturn().getModelAndView().getModel().get("journey");assertTrue(view.canUndo());
         mvc.perform(post("/journey/action").session(session).with(csrf()).cookie(cookie).param("action","undo").param("revision",view.state().revision())).andExpect(redirectedUrl("/"));
@@ -231,13 +241,15 @@ class JourneyWebTests {
             .andExpect(jsonPath("$.lines.length()").value(4)).andExpect(jsonPath("$.expiresAt").value(at("07:04").plusSeconds(18*3600).toString()))
             .andExpect(header().string("Cache-Control",containsString("no-store"))).andReturn().getResponse().getContentAsString();
         for(String secret:java.util.List.of("Test home","originLat","csrf","revision","JIT_JOURNEY"))assertFalse(card.contains(secret));
+        when(browser.id()).thenReturn("other-browser");
         mvc.perform(get("/journey/offline")).andExpect(jsonPath("$.available").value(false));
+        when(browser.id()).thenReturn("test-browser");
         when(clock.instant()).thenReturn(at("07:04").plusSeconds(18*3600));
         mvc.perform(get("/journey/offline").session(session)).andExpect(jsonPath("$.available").value(false));
     }
     @Test void historyIsOffByDefaultAndDeletionRequiresCsrf() throws Exception {
         var session=start();assertEquals(0,reports.count());
-        mvc.perform(get("/history").session(session)).andExpect(status().isOk()).andExpect(content().string(containsString("No completed trip reports yet")));
+        mvc.perform(get("/history").session(session)).andExpect(status().isOk()).andExpect(content().string(containsString("No trip reports yet")));
         var report=new TripReport();report.id="example";report.owner="test-browser";report.corridor="work";report.travelDate=DAY;report.actualArrival=at("08:40");report.transferOutcome="Made selected transfer";reports.save(report);
         mvc.perform(post("/history/delete").param("id","example")).andExpect(status().isForbidden());assertEquals(1,reports.count());
         mvc.perform(get("/history")).andExpect(status().isOk()).andExpect(content().string(containsString("Not recorded")));
@@ -253,7 +265,8 @@ class JourneyWebTests {
             var state=((ActiveJourney.View)mvc.perform(get("/").session(session)).andReturn().getModelAndView().getModel().get("journey")).state();
             when(clock.instant()).thenReturn(at(time));mvc.perform(post("/journey/action").session(session).with(csrf()).param("revision",state.revision()).param("action","advance"));
         }
-        assertEquals(0,reports.count());
+        assertEquals(1,reports.count());
+        assertEquals("Arrived",reports.findAll().get(0).status);
         var state=((ActiveJourney.View)mvc.perform(get("/").session(session)).andReturn().getModelAndView().getModel().get("journey")).state();
         mvc.perform(post("/journey/action").session(session).with(csrf()).param("revision",state.revision()).param("action","end"));assertEquals(1,reports.count());
         mvc.perform(post("/journey/action").session(session).with(csrf()).param("revision",state.revision()).param("action","end"));assertEquals(1,reports.count());

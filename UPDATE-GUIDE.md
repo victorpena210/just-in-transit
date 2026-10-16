@@ -1,5 +1,14 @@
 # Just in Transit update — October 16, 2026
 
+## Bus selection and saving fixes — October 16
+
+Rebuild and restart after pulling this update. Active trips now restore automatically in the same browser. **Find my bus** lets the rider select an actual vehicle (including a downtown loop), and **I'm on this bus** starts or corrects the current leg. The app follows that vehicle through trip changes; it shows an unconfirmed arrival until fresh service data supports the destination. GPS only suggests matches.
+
+Progress changes commit with their retry receipts and opt-in history. Disconnected updates stay on the phone and retry after reconnection while the page is open. An offline reload shows a saved status and needs reconnection to resume editing. History can include unfinished trips. Daily preferences change permanently only with **Save timing as my defaults**.
+
+The schema update adds a checkpoint version column (default 0), nullable trip-report status and a journey-receipt table. Preserve the current database and normal backups. This code update does not configure a persistent hosting volume or database; use the existing persistent MySQL configuration or persistent H2 volume. Clearing cookies/storage still loses this browser's access/local pending updates. Active recovery remains limited to 18 hours.
+
+
 This source update adds browser-separated saved commutes and reports, estimated-versus-confirmed trip comparisons, optional Web Push, a broader VIA route comparison, and an optional Jev evaluation panel. It does not deploy itself or enable a paid service automatically.
 
 ## Arrival windows and latest departures

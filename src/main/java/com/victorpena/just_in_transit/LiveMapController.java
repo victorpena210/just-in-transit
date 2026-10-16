@@ -16,7 +16,7 @@ public class LiveMapController {
         this.schedules=schedules;this.realtime=realtime;this.vehicles=vehicles;this.journeys=journeys;this.clock=clock;
     }
     public record Status(Instant now,List<Stop> stops,List<LiveMapData.Bus> buses,List<LiveMapData.Countdown> countdowns,
-        String message,String vehicleStatus,String predictionStatus,boolean active,String phase,String revision,Integer walkMinutes,Decision decision,String firstRoute,String startMode,boolean planExpired) { }
+        String message,String vehicleStatus,String predictionStatus,boolean active,String phase,String revision,Integer walkMinutes,Decision decision,String firstRoute,String startMode,boolean planExpired,List<LiveMapData.Bus> candidates) { }
     public record Decision(String leave,String work,String deadline,long transfer,String backup,String confidence,String rating,CommuteTiming.Summary timing,String firstBoard,String firstAlight,String secondBoard,String secondAlight,String transferArrival,String firstWait) { }
     @GetMapping("/live") public Status live(@RequestParam(defaultValue="") String token,@RequestParam(defaultValue="0") int option,
         @RequestParam(defaultValue="81799") String originStop,@RequestParam(defaultValue="83463") String destinationStop,@RequestParam(defaultValue="work") String corridor) {
@@ -40,8 +40,16 @@ public class LiveMapController {
             boolean highlight=b.selected() && (active==null || (b.route().equals(route.firstRoute())?!active.firstDone() && !active.state().needs24():!active.secondDone() && active.hasConnection()));
             return new LiveMapData.Bus(b.id(),b.tripId(),b.route(),b.headsign(),b.lat(),b.lon(),b.reportedAt(),b.validUntil(),b.fresh(),highlight);
         }).toList();
+        var candidates=LiveMapData.candidates(positions,schedule,now);
+        if(state!=null && state.ride()!=null && (state.phase()==ActiveJourney.Phase.ON_24 || state.phase()==ActiveJourney.Phase.ON_93)) {
+            String selectedVehicle=state.ride().vehicleId();
+            var combined=new java.util.LinkedHashMap<String,LiveMapData.Bus>();
+            for(var b:buses)combined.put(b.id(),new LiveMapData.Bus(b.id(),b.tripId(),b.route(),b.headsign(),b.lat(),b.lon(),b.reportedAt(),b.validUntil(),b.fresh(),b.id().equals(selectedVehicle)));
+            for(var b:candidates)if(b.id().equals(selectedVehicle))combined.put(b.id(),new LiveMapData.Bus(b.id(),b.tripId(),b.route(),b.headsign(),b.lat(),b.lon(),b.reportedAt(),b.validUntil(),b.fresh(),true));
+            buses=List.copyOf(combined.values());
+        }
         return new Status(now,List.copyOf(stops),buses,
             selected==null?List.of():LiveMapData.countdowns(form,selected,active,live,now),message,vehicles.message(),realtime.message(),
-            active!=null,active==null?"":state.phase().name(),state==null?"":state.revision(),form==null?null:form.walkToStop(),selected==null?null:new Decision(form.atStop() || form.onboard()?selected.first().board().display():selected.leaveDisplay(),selected.workDisplay(),selected.deadlineLabel(),selected.transferMargin(),selected.backupSummary(),selected.confidenceWarning(),selected.displayRating(),selected.timing(form),selected.first().board().display(),selected.first().alight().display(),selected.second().board().display(),selected.second().alight().display(),selected.first().alight().display(),form.onboard()?"Already aboard":Math.max(0,WaitPreferences.firstSeconds(form,selected.first(),now)/60)+" min at first stop"),route.firstRoute(),form==null?"home":form.startMode(),active==null && choice==null && !token.isBlank());
+            active!=null,active==null?"":state.phase().name(),state==null?"":state.revision(),form==null?null:form.walkToStop(),selected==null?null:new Decision(form.atStop() || form.onboard()?selected.first().board().display():selected.leaveDisplay(),selected.workDisplay(),selected.deadlineLabel(),selected.transferMargin(),selected.backupSummary(),selected.confidenceWarning(),selected.displayRating(),selected.timing(form),selected.first().board().display(),selected.first().alight().display(),selected.second().board().display(),selected.second().alight().display(),selected.first().alight().display(),form.onboard()?"Already aboard":Math.max(0,WaitPreferences.firstSeconds(form,selected.first(),now)/60)+" min at first stop"),route.firstRoute(),form==null?"home":form.startMode(),active==null && choice==null && !token.isBlank(),candidates);
     }
 }

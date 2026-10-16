@@ -65,5 +65,15 @@ public class JourneySession {
         if(state==null || state.expired(now))throw new IllegalArgumentException("That saved journey expired. Plan a new commute.");
         active=state;
     }
+    public synchronized void restore(ActiveJourney.State state) {
+        if(state==null && active!=null)plannedForm=active.form().withJourney("home","");
+        active=state;
+    }
+    public synchronized ActiveJourney.State proposeStart(String token,int index,Schedule schedule,LiveSnapshot live,Instant now,boolean keepHistory) {
+        if(current(now)!=null)throw new IllegalArgumentException("A commute is already active. Finish or end it before starting another.");
+        var choice=mapChoice(token,index,now);
+        if(choice==null)throw new IllegalArgumentException("That departure plan has expired. Find your departure again.");
+        return ActiveJourney.start(choice.form(),choice.option(),schedule,live,now,keepHistory);
+    }
     public synchronized void clear() { active=null;choices=List.of();choiceToken=null;plannedForm=null; }
 }
