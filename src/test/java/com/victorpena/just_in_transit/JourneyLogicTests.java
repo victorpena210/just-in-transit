@@ -11,7 +11,7 @@ class JourneyLogicTests {
     static final LocalDate DAY=LocalDate.of(2026,10,12);
     static Instant at(String value) { return DAY.atTime(LocalTime.parse(value)).atZone(ZONE).toInstant(); }
     static StopTime stop(String id,int sequence,String at) { int seconds=LocalTime.parse(at).toSecondOfDay();return new StopTime(id,sequence,seconds,seconds,true,true); }
-    static CommuteForm form() { return new CommuteForm("Home","Work",DAY,LocalTime.of(9,0),8,3,10,3,5,5,"83463"); }
+    static CommuteForm form() { return new CommuteForm("Home","Work",DAY,LocalTime.of(9,0),8,3,10,3,5,5,"83463").withArrivalWindow(5,30).withPreferences(15,30,0,"balanced"); }
     static Schedule schedule() {
         return new Schedule(Map.of(),List.of(
             new Trip("a","24","daily","Downtown",List.of(stop("81799",1,"07:15"),stop("76779",2,"07:45"))),

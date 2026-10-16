@@ -2,6 +2,18 @@
 
 This source update adds browser-separated saved commutes and reports, estimated-versus-confirmed trip comparisons, optional Web Push, a broader VIA route comparison, and an optional Jev evaluation panel. It does not deploy itself or enable a paid service automatically.
 
+## Arrival windows and latest departures
+
+Timing and waiting preferences appear first in setup and in the saved daily form. Set the destination deadline, arrival cushion, maximum minutes early, and minimum/maximum waits at the first stop and transfer. Walking remains separate. For example, a 4:00 PM deadline, 5-minute arrival cushion and 15-minute maximum early arrival gives an estimated arrival window of 3:45–3:55 PM when no extra traffic allowance is set. A 5-minute extra delay allowance narrows the estimate window to 3:45–3:50 PM so the second bus can use that allowance and still retain the arrival cushion. Contradictory limits are rejected.
+
+The default recommendation is the latest departure among candidates meeting every limit. Shorter-trip and more-room preferences remain available under advanced settings, but both respect the arrival window before ranking. If none fit, the planner keeps the configured limits and explicitly labels the closest on-time compromises; when there is no on-time connection, it shows the earliest late arrivals. The early-arrival cap is ignored in leave-after mode. Estimates and maximum waiting preferences are planning constraints, not guarantees of actual service.
+
+Old saved settings gain a 15-minute cap, or the existing arrival cushion plus delay allowance if that is larger, and switch to latest-departure ranking. Saved stops, walking times and other settings are retained. Once saved with the new cap, an explicitly selected ranking is preserved. Daily edits apply only to the current plan; edit and save the setup to change usual preferences. Recovery and live refresh retain the arrival window and show when a selected trip moves outside it.
+
+Direct/one-transfer alternatives between the selected stops also appear in the results, searched up to six hours before the arrival deadline (or six hours after a leave-after time). They use published transfer links and respect the walking/traffic allowance; fallback cards say which preferences they miss. This is not an exhaustive journey search involving arbitrary nearby stops or multiple transfers. Other routes remain comparison-only; step tracking and phone reminders still use the saved 24/93 corridor. No alternative-route search is offered after starting at a stop or joining a bus.
+
+When Jev is configured, **Ask Jev to compare these departures** refreshes the shown corridor options and checks the other-route choices before sending up to eight options that meet all limits. Too-early, canceled, unreachable and otherwise out-of-window choices are excluded. The typed result must select one of those IDs or abstain; unknown IDs are rejected. Public option summaries and matched advisories are saved with the evaluation, never home/work addresses or map points. Jev does not automatically select or start a trip. The standard planner works with Jev disabled or unavailable. A real provider call still requires the deployment credentials below.
+
 ## Install over your existing project
 
 1. Stop the running app. Keep your existing project and database.
@@ -62,7 +74,7 @@ JIT_JEV_HOURLY_BUDGET=60
 
 `off` is the default; only `off` and `shadow` are supported. The model version is configurable. The global process budget defaults to 60 evaluations/hour, with a 60-second browser-session cooldown and a short circuit breaker after API failures. A restart resets the in-memory budget. Treat it as a request guard, not a billing cap. API usage can incur charges under your TypeSafe plan.
 
-From a departure or active trip, choose **Try commute assistant**, optionally describe what is happening, then choose **Evaluate with Jev**. The request sends selected public stops, route/direction, current phase, timing margins, feed status, relevant official advisories and your optional message. It excludes saved home/work addresses, coordinates and browser credentials. Do not type personal information into the optional message.
+From a departure or active trip, choose **Review this trip with Jev** or **Review advisories with Jev**, optionally describe what is happening, then choose **Evaluate with Jev**. The request sends selected public stops, route/direction, current phase, timing margins, feed status, relevant official advisories and your optional message. It excludes saved home/work addresses, coordinates and browser credentials. Do not type personal information into the optional message.
 
 The panel shows the typed judgment and model confidence, retains its public advisory evidence, and lets you record helpful/not helpful/incorrect/not sure feedback. Model confidence is not the probability of catching a bus. Evaluations and feedback expire after 30 days and can be deleted. Optional rider-update text is not retained by this app. Review TypeSafe's applicable data terms separately. Feedback collection does not train a personal model automatically.
 
@@ -70,9 +82,9 @@ The integration uses `POST https://api.typesafe.ai/v1/systemone`, server-side be
 
 ## Validation and remaining checks
 
-The Java 17 / Spring Boot 4.1.1 production JAR packaged successfully. The Maven suite passed: 207 tests, zero failures/errors, one optional captured-live-feed test skipped. Coverage includes browser ownership, import, CSRF, route alternatives, report comparisons/export, Jev request/response validation and failure isolation, push endpoint checks, reminder cancellation, and independent decryption/signature verification of encoded Web Push.
+The Java 17 / Spring Boot 4.1.1 production JAR packaged successfully. The Maven suite passed: 221 tests, zero failures/errors, one optional captured-live-feed test skipped. Coverage includes maximum early-arrival limits, latest-departure ranking, daily preference persistence, validated Jev comparisons, browser ownership, import, CSRF, route alternatives, report comparisons/export, Jev request/response validation and failure isolation, push endpoint checks, reminder cancellation, and independent decryption/signature verification of encoded Web Push.
 
-Browser checks passed using the real Spring-rendered pages and synthetic transit data: save/reload, separate browser profiles, Jev evaluation, alternative routes, and five pages at 320/390/768/1280 px, with no JavaScript errors. Phone layouts were visually reviewed. An upgrade check on a copy of the uploaded H2 schema preserved seeded legacy settings/reports and created the new tables; this is not a hosted MySQL migration test. The cached VIA schedule parsed all 88 routes / 14,665 trips, and a representative alternatives search completed successfully.
+Browser checks passed using the real Spring-rendered pages and synthetic transit data: save/reload, daily wait/arrival edits, explicit early fallback, latest fitting departure, validation recovery, Jev comparison, alternative routes, and five pages at 320/390/768/1280 px, with no JavaScript errors. Phone layouts were visually reviewed. An upgrade check on a copy of the uploaded H2 schema preserved seeded legacy settings/reports and created the new tables; this is not a hosted MySQL migration test. The cached VIA schedule parsed all 88 routes / 14,665 trips, and a representative alternatives search completed successfully.
 
 Real-device push delivery and a paid Jev API call require your credentials and phone. Live VIA accuracy, accessible walking paths and production-scale load have not been established by these tests. The original intermittent production submission error was not reproduced from its original server log; the new reference IDs make a future incident diagnosable.
 

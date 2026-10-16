@@ -1,6 +1,14 @@
 package com.victorpena.just_in_transit;
 import static org.junit.jupiter.api.Assertions.*;import java.util.*;import org.junit.jupiter.api.Test;import tools.jackson.databind.json.JsonMapper;
 class JevTests {
+    @Test void comparisonCanOnlySelectSuppliedOptionsOrAbstain() {
+        var ids=Set.of("option_1","option_2");var request=JevClient.comparisonRequest("jev-1.13.0",Map.of("options",List.of()),ids);
+        var questions=(Map<?,?>)request.get("questions");assertEquals(1,questions.size());
+        var json=JsonMapper.builder().build();String response="{\"model\":\"jev-1.13.0\",\"answers\":{\"best_departure\":{\"type\":\"choice\",\"choice\":\"option_2\",\"confidence\":0.8,\"probabilities\":{\"option_1\":0.1,\"option_2\":0.8,\"uncertain\":0.1}}}}";
+        assertEquals("option_2",JevClient.parseComparison(json.readTree(response),ids).judgments().get(0).choice());
+        assertThrows(IllegalArgumentException.class,()->JevClient.parseComparison(json.readTree(response.replace("\"choice\":\"option_2\"","\"choice\":\"made_up\"")),ids));
+        assertThrows(IllegalArgumentException.class,()->JevClient.comparisonRequest("m",Map.of(),Set.of()));
+    }
     @Test void disabledIntegrationDoesNotCallNetwork(){var client=new JevClient("","jev-1.13.0","off",60);assertFalse(client.available());assertThrows(IllegalStateException.class,()->client.evaluate(Map.of(),0,true));}
     @Test void requestsUseIndependentBoundedChoicesAndNoMutationInstruction(){var request=JevClient.request("jev-1.13.0",Map.of("trip",Map.of("routes","24 → 93")),2,true);var questions=(Map<?,?>)request.get("questions");assertEquals(5,questions.size());assertTrue(questions.containsKey("next_action"));assertFalse(request.containsKey("messages"));}
     @Test void parsesTypedChoicesAndRejectsUnexpectedOrUnboundedOutputs(){

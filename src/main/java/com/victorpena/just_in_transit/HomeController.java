@@ -26,6 +26,9 @@ public class HomeController {
     private final TripHistory history;
     @org.springframework.beans.factory.annotation.Autowired private BrowserIdentity browser;
     @org.springframework.beans.factory.annotation.Autowired private CommuteNotifications notifications;
+    @org.springframework.beans.factory.annotation.Autowired private JevClient jev;
+    @org.springframework.beans.factory.annotation.Autowired private jakarta.validation.Validator validator;
+    @org.springframework.beans.factory.annotation.Autowired private AlternativePlanner alternatives;
     @org.springframework.beans.factory.annotation.Value("${maps.tile-url:https://tile.openstreetmap.org/{z}/{x}/{y}.png}")
     private String tileUrl;
     @org.springframework.beans.factory.annotation.Value("${maps.tile-credit:}") private String tileCredit;
@@ -89,7 +92,13 @@ public class HomeController {
                             @jakarta.validation.constraints.Pattern(regexp="work|home") String corridor,
                             @jakarta.validation.constraints.Pattern(regexp="arrive|depart") String planMode,
                             @jakarta.validation.constraints.Pattern(regexp="home|stop|onboard") String startMode,
-                            @jakarta.validation.constraints.Size(max=200) String firstTrip) {
+                            @jakarta.validation.constraints.Size(max=200) String firstTrip,
+                            @jakarta.validation.constraints.Min(0) @jakarta.validation.constraints.Max(60) Integer arrivalBuffer,
+                            @jakarta.validation.constraints.Min(0) @jakarta.validation.constraints.Max(360) Integer maxEarlyArrival,
+                            @jakarta.validation.constraints.Min(1) @jakarta.validation.constraints.Max(30) Integer boardingBuffer,
+                            @jakarta.validation.constraints.Min(1) @jakarta.validation.constraints.Max(120) Integer maxBoardingWait,
+                            @jakarta.validation.constraints.Min(1) @jakarta.validation.constraints.Max(30) Integer transferBuffer,
+                            @jakarta.validation.constraints.Min(1) @jakarta.validation.constraints.Max(120) Integer maxTransferWait) {
         public DailyForm { if(corridor==null)corridor="work";if(planMode==null)planMode="arrive";if(startMode==null)startMode="home";if(firstTrip==null)firstTrip=""; }
     }
     @PostMapping("/daily") public String daily(@Valid @ModelAttribute("daily") DailyForm daily,BindingResult dailyErrors,Model model,RedirectAttributes flash,@RequestParam(defaultValue="false") boolean refreshTrips) {
@@ -98,8 +107,13 @@ public class HomeController {
         var commute=saved.findById(Corridor.of(daily.corridor()).savedId()).orElse(null);
         if(commute==null || dailyErrors.hasErrors()) { flash.addFlashAttribute("notice",commute==null?"Save your commute first.":"Choose a valid travel date and clock-in time.");return "redirect:/"; }
         var form=commute.form(daily.date()).withTime(daily.date(),daily.arriveBy(),daily.planMode(),daily.startMode(),daily.firstTrip());
+        form=form.withArrivalWindow(daily.arrivalBuffer()==null?form.arrivalBuffer():daily.arrivalBuffer(),daily.maxEarlyArrival()==null?form.maxEarlyArrival():daily.maxEarlyArrival())
+            .withWaitWindows(daily.boardingBuffer()==null?form.boardingBuffer():daily.boardingBuffer(),daily.maxBoardingWait()==null?form.maxBoardingWait():daily.maxBoardingWait(),
+                daily.transferBuffer()==null?form.transferBuffer():daily.transferBuffer(),daily.maxTransferWait()==null?form.maxTransferWait():daily.maxTransferWait());
         if(refreshTrips) { model.addAttribute("commute",form);return render(form,model,false); }
-        var errors=new org.springframework.validation.BeanPropertyBindingResult(form,"commute");validateStops(form,errors);
+        var errors=new org.springframework.validation.BeanPropertyBindingResult(form,"commute");
+        for(var violation:validator.validate(form))errors.reject("preferences",violation.getMessage());
+        validateStops(form,errors);
         model.addAttribute("commute",form);model.addAttribute(BindingResult.MODEL_KEY_PREFIX+"commute",errors);
         // Today's deadline does not overwrite the saved usual clock-in time.
         return render(form,model,!errors.hasErrors());
@@ -170,6 +184,7 @@ public class HomeController {
         model.addAttribute("mapTileUrl",tileUrl);
         model.addAttribute("mapTileCredit",tileCredit);
         model.addAttribute("protectedAccess",access.enabled());
+        model.addAttribute("jevAvailable",jev.available());
         model.addAttribute("scheduleStatus",schedules.message());
         model.addAttribute("liveStatus",realtime.message());
         model.addAttribute("feedUpdated",live.updatedDisplay());
@@ -182,7 +197,7 @@ public class HomeController {
         model.addAttribute("originStopName",stopName(schedule,form.originStop(),"Houston & Mittman"));
         model.addAttribute("destinationStopName",stopName(schedule,form.destinationStop(),"Selected 93 stop"));
         model.addAttribute("hasSaved",saved.existsById(form.route().savedId()));
-        model.addAttribute("daily",new DailyForm(form.date(),form.arriveBy(),form.corridor(),form.planMode(),form.startMode(),form.firstTrip()));
+        model.addAttribute("daily",new DailyForm(form.date(),form.arriveBy(),form.corridor(),form.planMode(),form.startMode(),form.firstTrip(),form.arrivalBuffer(),form.maxEarlyArrival(),form.boardingBuffer(),form.maxBoardingWait(),form.transferBuffer(),form.maxTransferWait()));
         model.addAttribute("renderedAt",now);
         if(calculate) {
             var binding=new org.springframework.validation.BeanPropertyBindingResult(form,"commute");
@@ -191,13 +206,24 @@ public class HomeController {
         }
         Result result=calculate?planner.plan(form,schedule,live,now):null;
         model.addAttribute("result",result);
+        var otherRoutes=result==null || active!=null?java.util.List.<AlternativePlanner.Choice>of():alternatives.forCommute(schedule,live,form,now);
+        model.addAttribute("otherRoutes",otherRoutes);
+        var otherBest=otherRoutes.stream().filter(AlternativePlanner.Choice::fits).findFirst().orElse(null);
+        var corridorBest=result==null || result.options().isEmpty()?null:result.options().get(0);
+        boolean highlightOther=otherBest!=null && (corridorBest==null || !corridorBest.meetsBuffers()
+            || form.departing() && otherBest.arrival().isBefore(corridorBest.atWork())
+            || !form.departing() && form.preference().equals("latest") && otherBest.leave().isAfter(corridorBest.leaveHome()));
+        model.addAttribute("headlineAlternative",highlightOther?otherBest:null);
         if(result!=null)model.addAttribute("planToken",journeys.offer(form,result,now));
         model.addAttribute("canStart",form.date()!=null && form.date().equals(now.atZone(ZONE).toLocalDate()));
         boolean invalid=model.asMap().get(BindingResult.MODEL_KEY_PREFIX+"commute") instanceof BindingResult binding && binding.hasErrors();
         model.addAttribute("editOpen",invalid || result==null && active==null && !saved.existsById(form.route().savedId()));
         model.addAttribute("hasJourneyContent",active!=null || result!=null && !result.options().isEmpty());
         var advisory=alerts.get();
-        var relevant=advisory.relevant(AlertStore.contexts(form,schedule,journey==null?result:new Result(java.util.List.of(journey.option()),"Active commute"),now));
+        var advisoryContexts=new java.util.ArrayList<>(AlertStore.contexts(form,schedule,journey==null?result:new Result(java.util.List.of(journey.option()),"Active commute"),now));
+        for(var choice:otherRoutes)for(var ride:choice.rides())advisoryContexts.add(AlertStore.context(schedule,
+            new Leg(ride.trip().route(),ride.trip().id(),ride.board(),ride.alight(),ride.day()),ride.from().id(),ride.to().id()));
+        var relevant=advisory.relevant(advisoryContexts);
         model.addAttribute("alerts",relevant);
         if(journey!=null && !journey.finished() && !relevant.isEmpty()) {
             var guidance=(JourneyGuidance)model.asMap().get("guidance");
@@ -224,7 +250,7 @@ public class HomeController {
     private static CommuteForm defaultForm(String key,LocalDate day) {
         if("home".equals(key))return new CommuteForm("Work","Home",day,LocalTime.of(17,0),null,3,null,3,5,0,
             "81793","75229","manual",null,null,null,null,null,null,"home","depart","home","");
-        return new CommuteForm("","Six Flags Fiesta Texas — employee entrance",day,LocalTime.of(9,0),8,3,10,3,5,5,"83463").withPreferences(15,30,5,"balanced");
+        return new CommuteForm("","Six Flags Fiesta Texas — employee entrance",day,LocalTime.of(9,0),8,3,10,3,5,5,"83463").withPreferences(15,30,5,"latest");
     }
     private static String stopName(Schedule schedule,String id,String fallback) {
         return schedule!=null && id!=null && schedule.stops().containsKey(id)?schedule.stops().get(id).name():fallback;

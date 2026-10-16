@@ -135,6 +135,8 @@ public final class ActiveJourney {
         if(!off93 && !state.needs93() && !state.needs24() && !second.alight().directPrediction())warnings.add("Destination arrival includes a scheduled or inferred bus estimate; it is not a confirmed arrival time.");
         if(!off93 && now.isAfter(second.alight().at()) && !state.needs93())warnings.add("The 93's arrival estimate has passed. Confirm your progress; this remaining estimate may be out of date.");
         if(phase==Phase.WALKING_TO_DESTINATION && now.isAfter(updated.atWork()))warnings.add("Your walking estimate has passed. Mark arrived when you reach your destination.");
+        if(phase!=Phase.ARRIVED && !f.departing() && CommuteTiming.arrivalSeconds(f,updated)>f.maxEarlyArrival()*60L)
+            warnings.add("Your current arrival estimate is earlier than your preferred arrival window. Your selected buses are unchanged.");
         Instant atWork=phase==Phase.ARRIVED?state.changed():updated.atWork();
         long seconds=Duration.between(atWork,f.date().atTime(f.arriveBy()).atZone(ZONE).toInstant()).getSeconds();
         String deadline=seconds<0?(long)Math.ceil(-seconds/60.0)+" min late":seconds<60?"At your deadline":seconds/60+" min before your deadline";
@@ -231,8 +233,8 @@ public final class ActiveJourney {
         Instant work=second.alight().at().plusSeconds(f.walkToWork()*60L);
         long transfer=Duration.between(ready,second.board().at()).getSeconds();
         long arrival=Duration.between(work,f.date().atTime(f.arriveBy()).atZone(ZONE).toInstant()).getSeconds();
-        boolean meets=transfer>=(f.transferBuffer()+f.trafficAllowance())*60L && transfer<=f.maxTransferWait()*60L && (f.departing() || arrival>=(f.arrivalBuffer()+f.trafficAllowance())*60L);
+        boolean meets=transfer>=(f.transferBuffer()+f.trafficAllowance())*60L && transfer<=f.maxTransferWait()*60L && CommuteTiming.arrivalFits(f,arrival);
         return new Option(first,second,leave,work,Math.floorDiv(transfer,60),Math.floorDiv(arrival,60),Math.floorDiv(transfer,60),meets,
-            meets?"Buffers met":!f.departing() && arrival<0?"Late arrival":transfer<0?"Connection at risk":"Tight timing",null,null,!f.departing());
+            meets?"Buffers met":!f.departing() && arrival<0?"Late arrival":transfer<0?"Connection at risk":!f.departing() && arrival>f.maxEarlyArrival()*60L?"Earlier than your limit":"Tight timing",null,null,!f.departing());
     }
 }

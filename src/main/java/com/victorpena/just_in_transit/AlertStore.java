@@ -116,7 +116,7 @@ public class AlertStore {
         }
         return out;
     }
-    private static Context context(Schedule schedule,Leg leg,String start,String end) {
+    static Context context(Schedule schedule,Leg leg,String start,String end) {
         Trip trip=schedule.trips().stream().filter(t->t.id().equals(leg.tripId())).findFirst().orElse(null);
         if(trip==null) {
             var info=schedule.routes().getOrDefault(leg.route(),new RouteInfo("",3));

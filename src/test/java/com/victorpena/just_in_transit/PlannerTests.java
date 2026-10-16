@@ -18,7 +18,7 @@ class PlannerTests {
             new Trip("b","93","weekday","Six Flags",List.of(stop("76773",1,nextBus),stop("83463",2,"08:30:00")))
         ),Map.of("weekday",new Service(DAY,DAY,Set.of(DayOfWeek.MONDAY))),Map.of());
     }
-    static CommuteForm form() { return new CommuteForm("Home","Work",DAY,LocalTime.of(9,0),8,3,10,3,5,5,"83463"); }
+    static CommuteForm form() { return new CommuteForm("Home","Work",DAY,LocalTime.of(9,0),8,3,10,3,5,5,"83463").withArrivalWindow(5,30); }
     @Test void subtractsHomeWalkAndBufferAndIncludesFinalWalk() {
         var result=new CommutePlanner().plan(form(),schedule("07:55:00"),RealtimeStore.Snapshot.empty(),NOW);
         assertEquals(1,result.options().size());var option=result.options().get(0);

@@ -14,5 +14,13 @@ class AlternativePlannerTests {
     @Test void searchesNewRoutesAndIncludesWalks(){var options=search(network(0,0));assertEquals("10 → 20",options.get(0).routes());assertEquals(at("08:10"),options.get(0).arrival());assertEquals(at("07:07"),options.get(0).leave());assertEquals(7,options.get(0).waitMinutes());assertTrue(options.stream().anyMatch(x->x.routes().equals("30")));assertTrue(options.stream().noneMatch(x->x.routes().contains("40")));}
     @Test void prohibitedAndTooShortTransfersAreExcluded(){assertTrue(search(network(3,0)).stream().allMatch(x->x.rides().size()==1));assertTrue(search(network(2,600)).stream().allMatch(x->x.rides().size()==1));}
     @Test void doesNotInventCrossStreetTransfers(){var s=network(0,0);var noTransfers=new Schedule(s.stops(),s.trips(),s.services(),s.exceptions());assertTrue(search(noTransfers).stream().allMatch(x->x.rides().size()==1));}
+    @Test void arrivalSearchRanksLatestMatchingRouteAndLabelsEarlyFallback() {
+        var f=new CommuteForm("Start","End",DAY,LocalTime.of(8,30),5,3,10,3,5,5,"b","a","manual",null,null,null,null,null,null).withArrivalWindow(5,15);
+        var options=new AlternativePlanner().forCommute(network(0,0),LiveSnapshot.empty(),f,at("07:00"));
+        assertEquals("30",options.get(0).routes());assertEquals(at("07:12"),options.get(0).leave());assertTrue(options.get(0).fits());
+        var early=options.stream().filter(c->c.routes().equals("10 → 20")).findFirst().orElseThrow();assertFalse(early.fits());
+        assertTrue(AlternativePlanner.preferenceNote(f,early).contains("5 min earlier than your limit"));
+        assertTrue(new AlternativePlanner().forCommute(network(0,0),LiveSnapshot.empty(),f.withJourney("onboard","one"),at("07:00")).isEmpty());
+    }
     @Test void rejectsCanceledTripsAndServiceOutsideCalendar(){var now=at("07:00");var live=live("one","CANCELED",now);assertTrue(new AlternativePlanner().search(network(0,0),live,"a","b",now,5,10,3,3,5,20).stream().allMatch(x->x.rides().size()==1));assertTrue(new AlternativePlanner().search(network(0,0),LiveSnapshot.empty(),"a","b",at("07:00").plusSeconds(86400),5,10,3,3,5,20).isEmpty());}
 }

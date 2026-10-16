@@ -27,7 +27,7 @@ public record JourneyGuidance(String status,String tone,String nextStep,String c
             && (v.secondBoardDone() || o.second().board().directPrediction())
             && (v.secondDone() || o.second().alight().directPrediction());
         String status=!v.arrivalAvailable()?"Plan needs attention":passed?"Confirm your progress":
-            !f.departing() && o.arrivalMargin()<0?"Running late":tight?"Timing at risk":direct?"On track":"On schedule · unconfirmed";
+            !f.departing() && o.arrivalMargin()<0?"Running late":tight?"Timing at risk":!f.departing() && o.arrivalMargin()>f.maxEarlyArrival()?"Earlier than your arrival window":direct?"On track":"On schedule · unconfirmed";
         String tone=!v.arrivalAvailable() || tight || passed?"tight":direct?"comfortable":"uncertain";
         String next=switch(state.phase()) {
             case WALKING_TO_24 -> "Walk to your first stop ("+f.walkToStop()+" min). Board the "+f.route().firstRoute()+" at "+o.first().board().display()+". Confirm when you reach the stop.";

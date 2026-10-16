@@ -28,8 +28,9 @@ class JevWebTests {
         when(alerts.get()).thenReturn(AlertStore.Snapshot.parse(feed.toByteArray()));when(alerts.confirmed(any())).thenReturn(true);
     }
     record Plan(MockHttpSession session,String token){}
-    Plan plan()throws Exception{
-        var r=mvc.perform(post("/plan").with(csrf()).param("origin","SECRET_HOME_ADDRESS").param("destination","SECRET_WORK_ADDRESS").param("date",DAY.toString()).param("arriveBy","09:00").param("walkToStop","8").param("transferWalk","3").param("walkToWork","10").param("boardingBuffer","3").param("transferBuffer","5").param("arrivalBuffer","5").param("originStop","81799").param("destinationStop","83463")).andExpect(status().isOk()).andReturn();
+    Plan plan()throws Exception{return plan("30");}
+    Plan plan(String maxEarly)throws Exception{
+        var r=mvc.perform(post("/plan").with(csrf()).param("origin","SECRET_HOME_ADDRESS").param("destination","SECRET_WORK_ADDRESS").param("date",DAY.toString()).param("arriveBy","09:00").param("walkToStop","8").param("transferWalk","3").param("walkToWork","10").param("boardingBuffer","3").param("transferBuffer","5").param("arrivalBuffer","5").param("maxEarlyArrival",maxEarly).param("originStop","81799").param("destinationStop","83463")).andExpect(status().isOk()).andReturn();
         return new Plan((MockHttpSession)r.getRequest().getSession(),(String)r.getModelAndView().getModel().get("planToken"));
     }
     @Test void evaluationSendsMinimalContextAndCannotChangePlanOrProgress()throws Exception{
@@ -45,5 +46,46 @@ class JevWebTests {
         var p=plan();when(jev.evaluate(anyMap(),anyInt(),anyBoolean())).thenThrow(new java.io.IOException("unavailable"));
         mvc.perform(post("/assistant/evaluate").session(p.session()).with(csrf()).param("token",p.token())).andExpect(flash().attribute("notice",containsString("continues to work")));
         mvc.perform(get("/maps/live").session(p.session()).param("token",p.token())).andExpect(status().isOk()).andExpect(jsonPath("$.planExpired").value(false));assertEquals(0,reviews.count());
+    }
+    @Test void comparisonIncludesOnlyValidatedChoicesAndNoPrivateAddresses()throws Exception {
+        var p=plan();when(jev.compare(anyMap(),anySet())).thenReturn(new JevClient.Evaluation("comparison-model",List.of(new JevClient.Judgment("Suggested departure","option_1",0.9,Map.of("option_1",0.9,"uncertain",0.1)))));
+        mvc.perform(post("/assistant/compare").session(p.session()).with(csrf()).param("token",p.token())).andExpect(redirectedUrl("/assistant"));
+        var capture=org.mockito.ArgumentCaptor.forClass(Map.class);verify(jev).compare(capture.capture(),eq(Set.of("option_1")));
+        String state=capture.getValue().toString();assertFalse(state.contains("SECRET_HOME"));assertFalse(state.contains("SECRET_WORK"));assertTrue(state.contains("max_minutes_early=30"));
+        assertEquals(1,reviews.count());assertTrue(reviews.findAll().get(0).evidence.contains("8:40 AM"));
+        mvc.perform(get("/maps/live").session(p.session()).param("token",p.token())).andExpect(jsonPath("$.active").value(false)).andExpect(jsonPath("$.planExpired").value(false));
+        mvc.perform(post("/assistant/compare").session(p.session()).with(csrf()).param("token",p.token())).andExpect(flash().attribute("notice",containsString("Wait a minute")));
+    }
+    @Test void outsideArrivalWindowAndUnavailableChoicesNeverReachJev()throws Exception {
+        var p=plan("15");mvc.perform(post("/assistant/compare").session(p.session()).with(csrf()).param("token",p.token()))
+            .andExpect(flash().attribute("notice",containsString("No current option meets")));
+        verify(jev,never()).compare(anyMap(),anySet());
+        var valid=plan();var base=schedules.get();when(schedules.get()).thenReturn(new Schedule(base.stops(),List.of(),base.services(),base.exceptions()));
+        mvc.perform(post("/assistant/compare").session(valid.session()).with(csrf()).param("token",valid.token()))
+            .andExpect(flash().attribute("notice",containsString("No current option meets")));
+        verify(jev,never()).compare(anyMap(),anySet());
+    }
+    @Test void matchingOtherRouteIsHighlightedAndIncludedEvenWhenCorridorDoesNotFit()throws Exception {
+        var base=schedules.get();var trips=new ArrayList<>(base.trips());trips.add(new Trip("direct94","94","daily","Direct",List.of(stop("81799",1,"08:00"),stop("83463",2,"08:45"))));
+        when(schedules.get()).thenReturn(new Schedule(base.stops(),trips,base.services(),base.exceptions()));var p=plan("15");
+        mvc.perform(get("/").session(p.session())).andExpect(content().string(containsString("A matching option on another route")));
+        // Rendering makes a fresh token; use the session's current plan, not the replaced token.
+        var fresh=mvc.perform(get("/").session(p.session())).andReturn();String token=(String)fresh.getModelAndView().getModel().get("planToken");
+        when(jev.compare(anyMap(),anySet())).thenReturn(new JevClient.Evaluation("other-route-model",List.of(new JevClient.Judgment("Suggested departure","option_1",0.9,Map.of("option_1",0.9,"uncertain",0.1)))));
+        mvc.perform(post("/assistant/compare").session(p.session()).with(csrf()).param("token",token)).andExpect(redirectedUrl("/assistant"));
+        var capture=org.mockito.ArgumentCaptor.forClass(Map.class);verify(jev).compare(capture.capture(),eq(Set.of("option_1")));
+        String state=capture.getValue().toString();assertTrue(state.contains("routes=94"));assertFalse(state.contains("routes=24 → 93"));
+    }
+    @Test void comparisonFailureOrUnknownSelectionKeepsStandardPlanUsable()throws Exception {
+        var p=plan();when(jev.compare(anyMap(),anySet())).thenReturn(new JevClient.Evaluation("model",List.of(new JevClient.Judgment("Suggested departure","invented_bus",1,Map.of()))));
+        mvc.perform(post("/assistant/compare").session(p.session()).with(csrf()).param("token",p.token())).andExpect(flash().attribute("notice",containsString("continues to work")));
+        assertEquals(0,reviews.count());mvc.perform(get("/maps/live").session(p.session()).param("token",p.token())).andExpect(jsonPath("$.planExpired").value(false));
+    }
+    @Test void disabledJevShowsStatusAndDoesNotOfferAnEvaluationButton()throws Exception {
+        when(jev.available()).thenReturn(false);var p=plan();
+        mvc.perform(get("/").session(p.session())).andExpect(content().string(containsString("Jev is not enabled")))
+            .andExpect(content().string(org.hamcrest.Matchers.not(containsString("Ask Jev to compare these departures"))));
+        mvc.perform(post("/assistant/compare").session(p.session()).with(csrf()).param("token",p.token())).andExpect(flash().attribute("notice",containsString("not enabled")));
+        verify(jev,never()).compare(anyMap(),anySet());
     }
 }

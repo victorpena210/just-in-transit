@@ -17,7 +17,7 @@ class CommuteReliabilityTests {
     }
     @Test void longWaitFallbackIsAvailableButNeverSaysBuffersMet() {
         var base=schedule();var trips=base.trips().stream().filter(t->!t.id().equals("b")).toList();
-        var f=form().withTime(DAY,LocalTime.of(10,0),"arrive","home","");
+        var f=form().withTime(DAY,LocalTime.of(10,0),"arrive","home","").withArrivalWindow(5,30);
         var result=new CommutePlanner().plan(f,new Schedule(base.stops(),trips,base.services(),base.exceptions()),LiveSnapshot.empty(),at("07:00"));
         assertEquals(1,result.options().size());assertFalse(result.options().get(0).meetsBuffers());
         assertEquals("Longer wait than preferred",result.options().get(0).displayRating());

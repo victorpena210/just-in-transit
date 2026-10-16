@@ -55,7 +55,7 @@ public final class TransitModels {
         public String backupSummary() { return backup==null?"No later matching "+second.route()+" found in the checked service days.":
             "If you miss this "+second.route()+": estimated arrival "+backup.workDisplay()+" · "+backup.deadlineLabel()+"."; }
         public String comparisonLabel(Option best) {
-            if(equals(best))return !hasDeadline?(meetsBuffers?"Recommended departure":"Earliest available"):arrivalMargin<0?"Earliest remaining arrival":"Recommended";
+            if(equals(best))return !hasDeadline?(meetsBuffers?"Recommended departure":"Closest option"):arrivalMargin<0?"Earliest remaining arrival":meetsBuffers?"Best fit":"Closest option · outside preferences";
             if(arrivalMargin<0)return "Later arrival";
             if(first.equals(best.first))return "Different transfer";
             if(leaveHome.isAfter(best.leaveHome))return "Leave later";
@@ -63,7 +63,7 @@ public final class TransitModels {
             return "Earlier departure";
         }
         public String comparisonDetail(Option best) {
-            if(equals(best))return meetsBuffers?"Meets your walks, wait windows and delay allowance.":arrivalMargin<0?"Earliest arrival on your saved route; your deadline stays unchanged.":"Fits your deadline; review the wait windows and delay allowance.";
+            if(equals(best))return meetsBuffers?"Meets your arrival window, walks, waits and delay allowance.":arrivalMargin<0?"Earliest arrival on your saved route; your deadline stays unchanged.":"Outside your preferences; review the arrival window, waits and delay allowance.";
             long difference=Duration.between(best.leaveHome,leaveHome).toMinutes();
             return (difference>0?difference+" min longer at home":(-difference)+" min earlier departure")+" · "+transferMargin+" min after the transfer walk · "+deadlineLabel()+".";
         }

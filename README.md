@@ -1,11 +1,16 @@
 # Just in Transit
 
-A San Antonio commute assistant with guided 24 → 93 / 93 → 24 trips and a separate all-route comparison view.
+A San Antonio commute assistant with guided 24 → 93 / 93 → 24 trips and direct/one-transfer route comparisons alongside your departure results.
 
 ## Current update — October 16, 2026
 
 Read [UPDATE-GUIDE.md](UPDATE-GUIDE.md) for installation, restoration of existing data, deployment variables and limitations.
 
+- Arrival deadlines and first-stop/transfer wait windows now lead setup and the saved daily form. Daily changes do not overwrite usual saved preferences.
+- Added a maximum early-arrival limit (15 minutes by default, increased only when needed to accommodate an existing arrival cushion plus delay allowance). Existing saves without this field adopt latest-departure ranking; stops and walking times are retained.
+- Latest departure is the default among trips meeting the arrival window, wait limits and traffic allowance. Too-early fallbacks are labeled with the exact shortfall instead of appearing as recommendations that meet preferences.
+- Other direct/one-transfer routes between the selected stops appear with the same arrival deadline and limits. Alternative-route comparisons do not start corridor tracking.
+- Optional Jev comparison accepts only refreshed, validated departure IDs or an uncertain response. It cannot override your limits or change a trip; unavailable Jev is clearly labeled.
 - Fixed explicit public-profile startup and isolated saved commutes/history by browser, with a protected import path for older data.
 - Added initial estimates versus rider-confirmed times, notes and CSV export.
 - Added opt-in Web Push and an installable app manifest; configure signing credentials before enabling notifications.
@@ -14,7 +19,7 @@ Read [UPDATE-GUIDE.md](UPDATE-GUIDE.md) for installation, restoration of existin
 - Added request references for unexpected application errors.
 - Merged with the latest GitHub improvements, preserving balanced/latest/safer ranking, traffic allowances, complete-trip breakdowns and active-trip guidance.
 
-The current Maven suite passes **207 tests: 206 passed, one optional captured-feed test skipped** on Java 17 / Spring Boot 4.1.1. Jev account acceptance and real-phone push delivery still need your configuration. See the current guide for the exact checks and remaining limits.
+The current Maven suite passes **221 tests: 220 passed, one optional captured-feed test skipped** on Java 17 / Spring Boot 4.1.1. Jev account acceptance and real-phone push delivery still need your configuration. See the current guide for the exact checks and remaining limits.
 
 ## Historical release notes
 

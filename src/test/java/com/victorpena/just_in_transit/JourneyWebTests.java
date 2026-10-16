@@ -123,6 +123,18 @@ class JourneyWebTests {
         assertTrue(actual.isLocationResolved());assertEquals(LocalTime.of(9,0),saved.findById(1L).orElseThrow().arriveBy);
         mvc.perform(post("/daily").param("date","2026-10-12").param("arriveBy","08:35")).andExpect(status().isForbidden());
     }
+    @Test void dailyWaitsAndArrivalWindowCanBeChangedWithoutOverwritingSavedPreferences() throws Exception {
+        var initial=form().withArrivalWindow(5,30);saved.save(SavedCommute.from(initial));
+        var response=mvc.perform(post("/daily").with(csrf()).param("date",DAY.toString()).param("arriveBy","09:00")
+            .param("arrivalBuffer","5").param("maxEarlyArrival","15").param("boardingBuffer","4").param("maxBoardingWait","8")
+            .param("transferBuffer","6").param("maxTransferWait","12")).andExpect(status().isOk()).andReturn();
+        var current=(CommuteForm)response.getModelAndView().getModel().get("commute");
+        assertEquals(15,current.maxEarlyArrival());assertEquals(4,current.boardingBuffer());assertEquals(12,current.maxTransferWait());
+        assertEquals(30,saved.findById(1L).orElseThrow().maxEarlyArrival);assertEquals(3,saved.findById(1L).orElseThrow().boardingBuffer);
+        mvc.perform(post("/daily").with(csrf()).param("date",DAY.toString()).param("arriveBy","09:00")
+            .param("arrivalBuffer","10").param("maxEarlyArrival","5")).andExpect(status().isOk())
+            .andExpect(content().string(containsString("The maximum early arrival must cover"))).andExpect(model().attributeDoesNotExist("planToken"));
+    }
     @Test void savedTripResumesInNewSessionAndIsDeletedWhenEnded() throws Exception {
         var plan=mvc.perform(plan()).andReturn();var session=(MockHttpSession)plan.getRequest().getSession(false);
         String token=(String)plan.getModelAndView().getModel().get("planToken");

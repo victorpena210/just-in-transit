@@ -23,6 +23,9 @@ public class JourneySession {
     public synchronized void remember(CommuteForm form) { plannedForm=form; }
     public synchronized CommuteForm lastForm() { return plannedForm; }
     public record MapChoice(CommuteForm form,Option option) { }
+    public synchronized CommuteForm offeredForm(String token,Instant now) {
+        return token!=null && Objects.equals(choiceToken,token) && plannedAt!=null && !now.isAfter(plannedAt.plusSeconds(PLAN_LIFETIME_SECONDS))?plannedForm:null;
+    }
     public synchronized MapChoice mapChoice(String token,int index,Instant now) {
         if(token==null || !Objects.equals(choiceToken,token) || plannedAt==null || now.isAfter(plannedAt.plusSeconds(PLAN_LIFETIME_SECONDS))
             || index<0 || index>=choices.size())return null;

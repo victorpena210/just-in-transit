@@ -57,7 +57,7 @@ class PublicAccessWebTests {
         mvc.perform(https(get("/")))
                 .andExpect(status().isOk())
                 .andExpect(unauthenticated())
-                .andExpect(content().string(containsString("Where are you going?")))
+                .andExpect(content().string(containsString("When do you need to arrive?")))
                 .andExpect(content().string(not(containsString("Sign out"))))
                 .andExpect(content().string(containsString("name=\"_csrf\"")))
                 .andExpect(header().string("X-Robots-Tag", "noindex, nofollow, noarchive"))

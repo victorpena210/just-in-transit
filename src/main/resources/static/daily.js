@@ -12,6 +12,17 @@
   document.addEventListener('click', event => {
     if (event.target.closest('[data-edit-commute]') && $('edit-commute')) $('edit-commute').open = true;
   });
+  for (const id of ['commute-form', 'daily-form']) {
+    const form = $(id); if (!form) continue;
+    const mode = form.querySelector('[name="planMode"]');
+    const updateWindow = () => {
+      const departing = mode?.value === 'depart';
+      form.querySelectorAll('[data-arrival-window]').forEach(el => el.hidden = departing);
+      const label = form.querySelector('[data-time-label]');
+      if (label) label.textContent = departing ? 'Leave starting point after (Central)' : 'Be at destination by (Central)';
+    };
+    mode?.addEventListener('change', updateWindow);updateWindow();
+  }
   if (!card) return;
   let snapshot = null, received = 0, failed = false, dirty = false, pending = false, expired = false, changedForm = null;
   const token = card.dataset.token;
@@ -60,6 +71,11 @@
         setText('[data-timing-stop]', d.timing.atFirstStop);setText('[data-timing-first]', `${d.timing.firstWait} min`);
         setText('[data-timing-transfer]', `${d.timing.transferWait} min`);setText('[data-timing-total]', `${d.timing.totalMinutes} min`);
         setText('[data-timing-traffic]', d.timing.trafficNote);
+        setText('[data-preference-note]', d.timing.preferenceNote);
+        if (!d.timing.fitsWindows) {
+          setText('.option-label', 'Outside preferences · update plan');
+          card.classList.add('tight');
+        }
       }
       if (d.transfer < 0) { $('leave-basis').textContent = 'Connection no longer fits. Update the plan.'; failed = true; }
     } catch (_) { failed = true; }

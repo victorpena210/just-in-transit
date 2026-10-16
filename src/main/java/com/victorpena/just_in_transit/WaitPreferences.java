@@ -12,10 +12,11 @@ public final class WaitPreferences {
     public static boolean fits(CommuteForm f,long first,long transfer,long arrival) {
         return (f.onboard() || first>=f.boardingBuffer()*60L && first<=f.maxBoardingWait()*60L)
             && transfer>=f.transferBuffer()*60L && transfer<=f.maxTransferWait()*60L
-            && (f.departing() || arrival>=f.arrivalBuffer()*60L);
+            && CommuteTiming.arrivalFits(f,arrival);
     }
     public static String rating(CommuteForm f,long first,long transfer,long arrival) {
         if(!f.departing() && arrival<0)return "Late arrival";
+        if(!f.departing() && arrival>f.maxEarlyArrival()*60L)return "Earlier than your limit";
         if(transfer<0)return "Connection at risk";
         if(first>f.maxBoardingWait()*60L)return "Long first-stop wait";
         if(transfer>f.maxTransferWait()*60L)return "Long transfer wait";

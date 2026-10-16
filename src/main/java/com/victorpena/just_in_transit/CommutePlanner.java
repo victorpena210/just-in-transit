@@ -25,13 +25,14 @@ public class CommutePlanner {
         List<Option> result=new ArrayList<>();result.add(best);
         for(var o:ranked)if(result.size()<3 && result.stream().noneMatch(r->legKey(r.first()).equals(legKey(o.first()))))result.add(o);
         for(var o:ranked)if(result.size()<3 && !result.contains(o))result.add(o);
-        String choice=f.departing()?"Departures after your selected time; no arrival deadline is set.":"On-time arrivals take priority.";
-        String preference=switch(f.preference()) { case "latest" -> "Then prefer leaving later.";case "safer" -> "Then prefer more room for delays.";default -> "Then prefer shorter complete commutes with less excess waiting."; };
-        return new Result(List.copyOf(result),choice+" "+preference+" "+(best.meetsBuffers()?
-            "Your wait windows, walking times and delay allowance are met.":"No option meets every requested window and allowance; review the trade-offs below."));
+        String choice=f.departing()?"Departures after your selected time; no arrival deadline is set.":f.arrivalWindowLabel();
+        String preference=switch(f.preference()) { case "latest" -> "Latest departure that fits your limits on this route.";case "safer" -> "More room for delays within your limits.";default -> "Shorter complete commute within your limits."; };
+        return new Result(List.copyOf(result),choice+" "+(best.meetsBuffers()?
+            (f.departing()?"Earliest arrival that fits your waits.":preference):"No trip fits all your preferences on your saved route. Closest options are shown with their trade-offs; your limits have not changed."));
     }
     private static Comparator<Option> ranking(CommuteForm f) {
         Comparator<Option> base=Comparator.comparing(Option::meetsBuffers).reversed()
+            .thenComparingLong(o->CommuteTiming.arrivalExcess(f,o))
             .thenComparingLong(o->CommuteTiming.waitExcess(f,o));
         if(f.departing())return base.thenComparing(earliestArrival());
         return switch(f.preference()) {
@@ -104,6 +105,7 @@ public class CommutePlanner {
                 if(!onboard && firstWait<f.boardingBuffer()*60L)rating="Tight first boarding";
                 else if(firstWait>f.maxBoardingWait()*60L || marginSeconds>f.maxTransferWait()*60L)rating="Longer wait than preferred";
                 if(!f.departing() && arrivalSeconds<0)rating="Late arrival";
+                else if(!f.departing() && arrivalSeconds>f.maxEarlyArrival()*60L)rating="Earlier than your limit";
                 options.add(new Option(a,b,leave,atWork,marginSeconds/60,f.departing()?0:Math.floorDiv(arrivalSeconds,60),marginSeconds/60,
                     meets,rating,backup==null?null:backup.minutesLater(),backup,!f.departing()));
             }
