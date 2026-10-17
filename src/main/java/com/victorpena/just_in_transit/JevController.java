@@ -6,7 +6,8 @@ import org.springframework.stereotype.Controller;import org.springframework.ui.M
 import tools.jackson.databind.json.JsonMapper;
 import jakarta.servlet.http.HttpSession;
 
-@Controller public class JevController {
+@Controller @org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(name="jit.personal.enabled", havingValue="false")
+public class JevController {
     private final JevClient jev;private final JevReviewRepository reviews;private final BrowserIdentity browser;private final JourneySession journeys;private final ScheduleStore schedules;private final RealtimeStore realtime;private final AlertStore alerts;private final Clock clock;
     private final JsonMapper json=JsonMapper.builder().build();
     @org.springframework.beans.factory.annotation.Autowired private AlternativePlanner alternatives;

@@ -12,6 +12,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 @RequestMapping("/maps")
+@org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(name="jit.personal.enabled", havingValue="false")
 public class MapController {
     private final MapService maps;
     private final ScheduleStore schedules;

@@ -7,6 +7,7 @@ import org.springframework.web.bind.annotation.*;
 import jakarta.servlet.http.HttpServletRequest;
 
 @RestController
+@org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(name="jit.personal.enabled", havingValue="false")
 public class OfflineCardController {
     private final JourneySession journeys;private final JourneyRecovery recovery;private final ScheduleStore schedules;private final RealtimeStore realtime;private final Clock clock;
     public OfflineCardController(JourneySession journeys,JourneyRecovery recovery,ScheduleStore schedules,RealtimeStore realtime,Clock clock) {

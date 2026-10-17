@@ -4,6 +4,7 @@ import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.data.domain.*;
 @Controller
+@org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(name="jit.personal.enabled", havingValue="false")
 public class HistoryController {
     private final TripReportRepository reports;private final BrowserIdentity browser;
     public HistoryController(TripReportRepository reports,BrowserIdentity browser) { this.reports=reports;this.browser=browser; }

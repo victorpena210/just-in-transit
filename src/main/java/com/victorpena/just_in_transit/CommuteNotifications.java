@@ -10,6 +10,8 @@ import tools.jackson.databind.json.JsonMapper;import tools.jackson.databind.Dese
     public record Notice(String key,String title,String body) { }
     private final TripWatchRepository watches;private final PushSubscriptionRepository subscribers;private final PushTransport push;private final ScheduleStore schedules;private final RealtimeStore realtime;private final Clock clock;
     private final JsonMapper json=JsonMapper.builder().disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES).build();
+    @org.springframework.beans.factory.annotation.Value("${jit.personal.enabled:true}")
+    private boolean personalMode;
     private String cursor="";
     public CommuteNotifications(TripWatchRepository watches,PushSubscriptionRepository subscribers,PushTransport push,ScheduleStore schedules,RealtimeStore realtime,Clock clock) { this.watches=watches;this.subscribers=subscribers;this.push=push;this.schedules=schedules;this.realtime=realtime;this.clock=clock; }
     public synchronized void watch(String owner,Watch data,Instant expires) {
@@ -47,7 +49,7 @@ import tools.jackson.databind.json.JsonMapper;import tools.jackson.databind.Dese
     }
     @Scheduled(fixedDelayString="${jit.push.check-ms:30000}",initialDelay=30000)
     public void tick() {
-        if(!push.available())return;Instant now=clock.instant();watches.deleteByExpiresAtBefore(now);
+        if(personalMode || !push.available())return;Instant now=clock.instant();watches.deleteByExpiresAtBefore(now);
         var batch=watches.findTop100ByOwnerGreaterThanOrderByOwnerAsc(cursor);
         if(batch.isEmpty() && !cursor.isEmpty()){cursor="";batch=watches.findTop100ByOwnerGreaterThanOrderByOwnerAsc(cursor);}
         if(batch.isEmpty())return;

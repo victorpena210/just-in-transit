@@ -19,7 +19,7 @@ import org.springframework.test.web.servlet.*;
 import tools.jackson.databind.*;
 import tools.jackson.databind.json.JsonMapper;
 
-@SpringBootTest(properties={"via.enabled=false","maps.enabled=false","spring.datasource.url=jdbc:h2:mem:sync;DB_CLOSE_DELAY=-1","spring.jpa.hibernate.ddl-auto=create-drop"})
+@SpringBootTest(properties={"jit.personal.enabled=false","via.enabled=false","maps.enabled=false","spring.datasource.url=jdbc:h2:mem:sync;DB_CLOSE_DELAY=-1","spring.jpa.hibernate.ddl-auto=create-drop"})
 @AutoConfigureMockMvc
 class JourneySyncTests {
     @Autowired MockMvc mvc;

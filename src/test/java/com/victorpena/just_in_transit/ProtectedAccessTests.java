@@ -11,7 +11,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.mock.web.MockHttpSession;
 import org.springframework.test.web.servlet.MockMvc;
 
-@SpringBootTest(properties={"via.enabled=false","maps.enabled=false","jit.access.enabled=true","jit.access.username=victor",
+@SpringBootTest(properties={"jit.personal.enabled=false","via.enabled=false","maps.enabled=false","jit.access.enabled=true","jit.access.username=victor",
     "jit.access.password=test-only-long-password","spring.datasource.url=jdbc:h2:mem:protected-web;DB_CLOSE_DELAY=-1","spring.jpa.hibernate.ddl-auto=create-drop"})
 @AutoConfigureMockMvc
 class ProtectedAccessTests {

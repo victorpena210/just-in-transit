@@ -13,6 +13,7 @@ import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
 /** Legacy rows are never automatically handed to the first visitor of a public deployment. */
 @Controller
+@org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(name="jit.personal.enabled", havingValue="false")
 public class LegacyImportController {
     private final CommuteRepository legacy;private final BrowserCommuteStore saved;private final TripReportRepository reports;private final BrowserIdentity browser;private final String code;
     private final ConcurrentHashMap<String,Instant> attempts=new ConcurrentHashMap<>();

@@ -114,21 +114,9 @@ public class CommutePlanner {
         return options;
     }
     static List<Leg> legs(Schedule schedule,LiveSnapshot live,String route,String from,String to,LocalDate date,Instant now) {
-        List<Leg> result=new ArrayList<>();
-        for(var day:List.of(date.minusDays(1),date))for(var trip:schedule.trips()) {
-            if(!trip.route().equals(route) || !schedule.active(trip.service(),day))continue;
-            StopTime start=null;
-            for(var stop:trip.stops()) {
-                if(start==null && stop.id().equals(from) && stop.pickup())start=stop;
-                else if(start!=null && stop.id().equals(to) && stop.dropoff()) {
-                    Event board=live.event(trip,day,start,true,now),alight=live.event(trip,day,stop,false,now);
-                    if(board.usable() && alight.usable() && !alight.at().isBefore(board.at()))result.add(new Leg(route,trip.id(),board,alight,day));
-                    break;
-                }
-            }
-        }
-        result.sort(Comparator.comparing(l->l.board().at()));return result;
+        return ScheduleLegs.between(schedule,live,route,from,to,date,now);
     }
+
     public List<BoardRow> board(Schedule schedule,LiveSnapshot live,Instant now) {
         return board(schedule,live,now,"81799","83463");
     }

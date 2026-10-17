@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#1c342b"><meta name="robots" content="noindex,nofollow">
+    <title>My commute · Just in Transit</title>
+    <link rel="stylesheet" th:href="@{/commute.css}">
+    <script defer th:src="@{/commute.js}"></script>
+</head>
+<body>
+<div class="page">
+    <header class="masthead"><a class="brand" th:href="@{/}">just in <strong>transit.</strong></a><span class="city">SAN ANTONIO · CENTRAL TIME</span>
+        <form th:if="${protectedAccess}" th:action="@{/logout}" method="post"><button class="text-button" type="submit">Sign out</button></form>
+    </header>
+    <main>
+        <div class="intro"><p class="eyebrow">MY COMMUTE</p><h1>Make the connection.</h1><p>One route. A short transfer. A clear time to leave home.</p></div>
+        <div class="route-strip" aria-label="Route 24 from Mittman and Houston to Martin and Leona, then route 93 to Six Flags">
+            <div><span class="route-number">24</span><span>Mittman &amp; Houston<br><small>to Martin &amp; Leona</small></span></div>
+            <span class="route-arrow" aria-hidden="true">→</span>
+            <div><span class="route-number blue">93</span><span>Martin opposite Leona<br><small>to Six Flags</small></span></div>
+        </div>
+        <div class="layout">
+            <section class="settings" aria-labelledby="settings-title">
+                <p class="eyebrow">01 / YOUR ARRIVAL</p><h2 id="settings-title">When do you need to be there?</h2>
+                <form id="commute-form" th:action="@{/commute}" method="post" th:object="${personal}" th:attr="data-preview-url=@{/commute/preview}">
+                    <div class="errors" th:if="${#fields.hasAnyErrors()}" role="alert"><strong>Check your date, time and walking minutes.</strong>
+                        <p th:if="${#fields.hasErrors('date')}">Choose today or a future date.</p>
+                        <p th:if="${#fields.hasErrors('arriveBy')}">Enter a valid arrival time.</p>
+                        <p th:if="${#fields.hasErrors('finalWalk')}">Enter 0–60 minutes for the final walk.</p>
+                    </div>
+                    <label for="date">Travel date</label><input id="date" type="date" th:field="*{date}" th:min="${today}" required>
+                    <label for="arriveBy">Be at Six Flags by</label><input id="arriveBy" type="time" th:field="*{arriveBy}" required>
+                    <p class="field-note">Arrival at the Fiesta Texas employee entrance bus stop.</p>
+                    <details class="extra-walk" th:open="${personal.finalWalk != null and personal.finalWalk > 0}"><summary>Need time to walk in after the bus?</summary>
+                        <label for="finalWalk">Minutes from the bus stop to where you need to be</label><input id="finalWalk" type="number" min="0" max="60" step="1" th:field="*{finalWalk}" required>
+                        <p class="field-note">If added, this walk must also fit before your arrival deadline.</p>
+                    </details>
+                    <button class="primary" type="submit">Find my departure <span aria-hidden="true">↗</span></button>
+                    <p class="field-note">Your date, arrival time and final walk are remembered.</p>
+                </form>
+                <div class="rules"><p class="eyebrow">THE PLAN, IN ORDER</p><ol>
+                    <li><strong>Match the 24 and 93.</strong><span>3 minutes to change stops, then 3–10 minutes waiting for the 93.</span></li>
+                    <li><strong>Reach Six Flags on time.</strong><span>Choose the latest departure that fits your deadline.</span></li>
+                    <li><strong>Work back to leaving home.</strong><span>5 minutes walking + 3 minutes waiting for the 24.</span></li>
+                </ol></div>
+            </section>
+            <section id="result" class="result" th:fragment="result" th:attr="data-checked=${checkedEpoch},data-leave=${plan != null ? plan.leaveEpoch() : ''},data-calculated=${result != null}" aria-labelledby="result-title">
+                <div class="empty" th:if="${result == null}"><p class="eyebrow">02 / YOUR DEPARTURE</p><h2 id="result-title">Your morning, worked backward.</h2><p>Set your arrival time. Your leave-home time and both bus connections will appear here.</p><span class="empty-route" aria-hidden="true">24 <span>→</span> 93</span></div>
+                <div class="empty no-match" th:if="${result != null and plan == null}" role="status"><p class="eyebrow">02 / YOUR DEPARTURE</p><h2 id="result-title">No matching connection.</h2><p th:text="${result.message}"></p><p class="field-note">Waiting for the 93 stays within 10 minutes after the transfer walk. Your arrival deadline stays as entered.</p></div>
+                <div th:if="${plan != null}">
+                    <div class="departure"><p class="eyebrow">02 / YOUR DEPARTURE</p><h2 id="result-title">Leave home at</h2>
+                        <p class="leave-time" th:text="${plan.leaveDisplay()}"></p><p id="departure-countdown">Based on the latest check below.</p>
+                        <p class="arrival-preview">Arrive <strong th:text="${plan.arrivalDisplay()}"></strong> · <span th:text="${plan.earlyDisplay()}"></span></p>
+                        <div class="departure-footer"><span th:text="${plan.leaveDayDisplay()}"></span><span th:text="${plan.dataLabel()}"></span></div>
+                    </div>
+                    <div class="connection"><span class="connection-mark" aria-hidden="true">↳</span><p><strong><span th:text="${plan.transferDisplay()}"></span> between buses</strong><span>3 min to change stops + <span th:text="${plan.waitDisplay()}"></span> waiting for the 93</span></p><span class="fits">FITS</span></div>
+                    <ol class="timeline">
+                        <li><span class="timeline-symbol">↗</span><div><strong>Start walking from home</strong><small>5-minute walk to Mittman &amp; Houston</small></div><time th:text="${plan.leaveDisplay()}"></time></li>
+                        <li><span class="timeline-symbol dot"></span><div><strong>Reach the first stop</strong><small>3 minutes before the 24 · stop 81799</small></div><time th:text="${plan.firstStopDisplay()}"></time></li>
+                        <li><span class="timeline-symbol bus">24</span><div><strong>Board the 24</strong><small>Mittman &amp; Houston → Martin &amp; Leona</small><small class="source" th:text="${plan.first.board.source}"></small></div><time th:text="${plan.first.board.display()}"></time></li>
+                        <li><span class="timeline-symbol dot"></span><div><strong>Get off at Martin &amp; Leona</strong><small>3-minute walk to Martin opposite Leona</small><small class="source" th:text="${plan.first.alight.source}"></small></div><time th:text="${plan.first.alight.display()}"></time></li>
+                        <li><span class="timeline-symbol bus blue">93</span><div><strong>Board the 93</strong><small>Martin opposite Leona · stop 76773</small><small class="source" th:text="${plan.second.board.source}"></small></div><time th:text="${plan.second.board.display()}"></time></li>
+                        <li><span class="timeline-symbol dot"></span><div><strong>Reach Six Flags</strong><small>Fiesta Texas employee entrance · stop 83463</small><small class="source" th:text="${plan.second.alight.source}"></small></div><time th:text="${plan.second.alight.display()}"></time></li>
+                        <li th:if="${plan.finalWalk > 0}"><span class="timeline-symbol">✓</span><div><strong>Finish walking in</strong><small th:text="${plan.finalWalk + '-minute walk from the bus stop'}"></small></div><time th:text="${plan.arrivalDisplay()}"></time></li>
+                    </ol>
+                    <div class="arrival"><span>Arrive by <strong th:text="${#temporals.format(personal.arriveBy, 'h:mm a')}"></strong></span><strong th:text="${plan.earlyDisplay()}"></strong></div>
+                    <p class="estimate-note" th:text="${plan.directTransfer() ? 'Live transfer estimates are available. Bus timing can still change.' : 'The transfer includes scheduled or indirect estimates. A matching schedule does not guarantee the connection.'}"></p>
+                    <p class="field-note" th:text="${result.message}"></p>
+                </div>
+                <div class="freshness" th:if="${result != null}"><p>Checked <strong th:text="${checkedAt}"></strong> Central · <span id="refresh-status" role="status">Rechecks every 30 seconds while this page is open.</span></p><button id="refresh-plan" type="button" class="text-button">Check again ↻</button>
+                    <details><summary>Schedule &amp; live data</summary><p th:text="${scheduleStatus}"></p><p th:text="${liveStatus}"></p><p th:text="${feedUpdated}"></p></details>
+                    <noscript><p>Automatic checks need JavaScript. Submit your arrival time again to refresh.</p></noscript>
+                </div>
+            </section>
+        </div>
+    </main>
+    <footer>Just your commute. <span>24 → 93 → Six Flags</span><p>Keep this page open to see updated timing. No background alerts.</p></footer>
+</div>
+</body>
+</html>

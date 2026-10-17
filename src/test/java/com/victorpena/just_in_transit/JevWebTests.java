@@ -15,7 +15,7 @@ import com.google.transit.realtime.GtfsRealtime.FeedEntity;
 import com.google.transit.realtime.GtfsRealtime.EntitySelector;
 import com.google.transit.realtime.GtfsRealtime.Alert;
 import com.google.transit.realtime.GtfsRealtime.TranslatedString;
-@SpringBootTest(properties={"via.enabled=false","maps.enabled=false","spring.datasource.url=jdbc:h2:mem:jev-web;DB_CLOSE_DELAY=-1","spring.jpa.hibernate.ddl-auto=create-drop"})
+@SpringBootTest(properties={"jit.personal.enabled=false","via.enabled=false","maps.enabled=false","spring.datasource.url=jdbc:h2:mem:jev-web;DB_CLOSE_DELAY=-1","spring.jpa.hibernate.ddl-auto=create-drop"})
 @AutoConfigureMockMvc
 class JevWebTests {
     @Autowired MockMvc mvc;@Autowired JevReviewRepository reviews;

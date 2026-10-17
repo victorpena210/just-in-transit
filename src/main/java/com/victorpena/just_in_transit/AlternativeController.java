@@ -4,6 +4,7 @@ import java.time.*;import java.util.*;
 import org.springframework.stereotype.Controller;import org.springframework.ui.Model;import org.springframework.web.bind.annotation.*;
 import jakarta.validation.Valid;import jakarta.validation.constraints.*;import org.springframework.validation.BindingResult;import org.springframework.format.annotation.DateTimeFormat;
 @Controller
+@org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(name="jit.personal.enabled", havingValue="false")
 public class AlternativeController {
     private final ScheduleStore schedules;private final RealtimeStore realtime;private final AlternativePlanner planner;private final BrowserCommuteStore saved;private final Clock clock;
     public AlternativeController(ScheduleStore schedules,RealtimeStore realtime,AlternativePlanner planner,BrowserCommuteStore saved,Clock clock) { this.schedules=schedules;this.realtime=realtime;this.planner=planner;this.saved=saved;this.clock=clock; }

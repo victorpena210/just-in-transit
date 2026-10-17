@@ -19,7 +19,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 
 @ActiveProfiles("public")
-@SpringBootTest(properties = {
+@SpringBootTest(properties = {"jit.personal.enabled=false",
     "via.enabled=false",
     "maps.enabled=false",
     "spring.datasource.url=jdbc:h2:mem:public-web;DB_CLOSE_DELAY=-1",

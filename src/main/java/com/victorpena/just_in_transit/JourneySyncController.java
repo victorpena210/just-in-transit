@@ -10,6 +10,7 @@ import org.springframework.security.web.csrf.CsrfToken;
 
 @RestController
 @RequestMapping("/journey")
+@org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(name="jit.personal.enabled", havingValue="false")
 public class JourneySyncController {
     private final JourneySession journeys;private final JourneyActions actions;private final BrowserIdentity browser;private final BrowserCommuteStore saved;private final Clock clock;private final CommuteNotifications notifications;
     public JourneySyncController(JourneySession journeys,JourneyActions actions,BrowserIdentity browser,BrowserCommuteStore saved,Clock clock,CommuteNotifications notifications) {

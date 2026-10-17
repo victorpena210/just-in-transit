@@ -2,7 +2,8 @@ package com.victorpena.just_in_transit;
 import java.time.*;import java.util.*;
 import org.springframework.web.bind.annotation.*;import org.springframework.http.HttpStatus;import org.springframework.web.server.ResponseStatusException;
 import jakarta.servlet.http.HttpServletRequest;
-@RestController @RequestMapping("/notifications") public class NotificationController {
+@RestController @RequestMapping("/notifications") @org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(name="jit.personal.enabled", havingValue="false")
+public class NotificationController {
     private final BrowserIdentity browser;private final PushTransport transport;private final PushSubscriptionRepository subscriptions;private final TripWatchRepository watches;private final CommuteNotifications notifications;private final JourneySession journeys;private final ScheduleStore schedules;private final RealtimeStore realtime;private final Clock clock;
     public NotificationController(BrowserIdentity browser,PushTransport transport,PushSubscriptionRepository subscriptions,TripWatchRepository watches,CommuteNotifications notifications,JourneySession journeys,ScheduleStore schedules,RealtimeStore realtime,Clock clock) {this.browser=browser;this.transport=transport;this.subscriptions=subscriptions;this.watches=watches;this.notifications=notifications;this.journeys=journeys;this.schedules=schedules;this.realtime=realtime;this.clock=clock;}
     @GetMapping public Map<String,Object> status() { return Map.of("available",transport.available(),"publicKey",transport.publicKey(),"subscribed",subscriptions.existsById(browser.id()),"watching",watches.existsById(browser.id())); }

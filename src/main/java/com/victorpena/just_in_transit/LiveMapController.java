@@ -9,6 +9,7 @@ import org.springframework.http.HttpStatus;
 
 @RestController
 @RequestMapping("/maps")
+@org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(name="jit.personal.enabled", havingValue="false")
 public class LiveMapController {
     private final ScheduleStore schedules;private final RealtimeStore realtime;
     private final VehicleStore vehicles;private final JourneySession journeys;private final Clock clock;

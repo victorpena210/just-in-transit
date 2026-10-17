@@ -14,7 +14,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 
-@SpringBootTest(properties={"via.enabled=false","maps.enabled=false","jit.access.enabled=false","jit.access.allow-public=true","server.address=0.0.0.0",
+@SpringBootTest(properties={"jit.personal.enabled=false","via.enabled=false","maps.enabled=false","jit.access.enabled=false","jit.access.allow-public=true","server.address=0.0.0.0",
     "jit.legacy-import-code=owner-test-code-24-characters-long","spring.datasource.url=jdbc:h2:mem:isolation;DB_CLOSE_DELAY=-1","spring.jpa.hibernate.ddl-auto=create-drop"})
 @AutoConfigureMockMvc
 class BrowserIsolationTests {

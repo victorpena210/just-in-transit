@@ -24,12 +24,12 @@ fi
 
 backup_path="$(dirname "$project_dir")/just-in-transit-backup-$(date +%Y%m%d-%H%M%S)-$$.tar.gz"
 backup_items=()
-for item in src scripts .mvn pom.xml README.md UPDATE-GUIDE.md mvnw mvnw.cmd data apply-update.sh; do
+for item in src scripts docs .mvn pom.xml README.md UPDATE-GUIDE.md mvnw mvnw.cmd data apply-update.sh; do
   if [ -e "$project_dir/$item" ]; then backup_items+=("$item"); fi
 done
 tar -czf "$backup_path" -C "$project_dir" "${backup_items[@]}"
 
-for item in src scripts .mvn; do
+for item in src scripts docs .mvn; do
   mkdir -p "$project_dir/$item"
   cp -R "$update_dir/$item/." "$project_dir/$item/"
 done
@@ -42,7 +42,7 @@ if [ ! -f "$project_dir/data/owner-restore.properties" ] && command -v openssl >
   (umask 077; echo "jit.legacy-import-code=$(openssl rand -hex 24)" > "$project_dir/data/owner-restore.properties")
 fi
 echo "Update copied. Backup: $backup_path"
-echo "After restarting, open /restore to import older settings. Your local import code is in data/owner-restore.properties."
-echo "For Railway, configure JIT_LEGACY_IMPORT_CODE as described in UPDATE-GUIDE.md."
+echo "After restarting, open / for the simplified personal commute planner."
+echo "Legacy import remains available only when jit.personal.enabled=false; see UPDATE-GUIDE.md."
 echo "In your original project, run: sh mvnw clean test"
 echo "Then restart the app. Your Git history and saved commute database were preserved."

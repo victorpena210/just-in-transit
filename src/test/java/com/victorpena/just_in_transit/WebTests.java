@@ -12,7 +12,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 
-@SpringBootTest(properties={"via.enabled=false","spring.datasource.url=jdbc:h2:mem:jit-test;DB_CLOSE_DELAY=-1","spring.jpa.hibernate.ddl-auto=create-drop"})
+@SpringBootTest(properties={"jit.personal.enabled=false","via.enabled=false","spring.datasource.url=jdbc:h2:mem:jit-test;DB_CLOSE_DELAY=-1","spring.jpa.hibernate.ddl-auto=create-drop"})
 @AutoConfigureMockMvc
 class WebTests {
     @Autowired MockMvc mvc;
